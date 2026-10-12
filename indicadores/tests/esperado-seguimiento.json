@@ -1,0 +1,197 @@
+{
+"cliente": {
+"Las Ceibas": [
+3,
+7,
+0,
+0,
+10
+],
+"Integrasoft": [
+0,
+3,
+5,
+0,
+8
+],
+"Cartagena Del Chairá": [
+0,
+5,
+0,
+0,
+5
+],
+"EMCA": [
+2,
+2,
+0,
+0,
+4
+],
+"Uniamazonía": [
+2,
+1,
+0,
+0,
+3
+],
+"Hidroituango": [
+1,
+1,
+0,
+0,
+2
+],
+"EMMIR": [
+0,
+1,
+0,
+0,
+1
+],
+"Alcaldía Montañita": [
+0,
+1,
+0,
+0,
+1
+],
+"EMPOCALOTO": [
+0,
+1,
+0,
+0,
+1
+],
+"Telecafé": [
+0,
+1,
+0,
+0,
+1
+]
+},
+"sprint": {
+"SPRINT 7 UNIFICADO": [
+5,
+6,
+4,
+0,
+15
+],
+"SPRINT 6 UNIFICADO CARRIL B": [
+0,
+0,
+0,
+0,
+0
+],
+"SPRINT 5 UNIFICADO": [
+0,
+0,
+0,
+0,
+0
+],
+"SPRINT 5 DISEÑO Y DESARROLLO": [
+0,
+0,
+0,
+0,
+0
+],
+"Sprint 4 Analistas Funcionales": [
+0,
+0,
+0,
+0,
+0
+],
+"Sprint 3 Analistas funcionales": [
+0,
+0,
+0,
+0,
+0
+],
+"Sin sprint": [
+3,
+17,
+1,
+0,
+21
+]
+},
+"modulo": {
+"Facturación y Liquidaciones": [
+2,
+6,
+0,
+0,
+8
+],
+"Nómina": [
+2,
+3,
+2,
+0,
+7
+],
+"Contabilidad": [
+1,
+4,
+2,
+0,
+7
+],
+"Tesorería": [
+0,
+4,
+0,
+0,
+4
+],
+"Activos fijos": [
+1,
+2,
+0,
+0,
+3
+],
+"ControlBlue / Órdenes de trabajo": [
+0,
+3,
+0,
+0,
+3
+],
+"Presupuesto": [
+1,
+1,
+0,
+0,
+2
+],
+"Compras": [
+0,
+0,
+1,
+0,
+1
+],
+"Contratación": [
+1,
+0,
+0,
+0,
+1
+],
+"Sin módulo identificado": [
+0,
+0,
+0,
+0,
+0
+]
+}
+}
