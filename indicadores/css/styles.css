@@ -141,7 +141,7 @@ main { padding: 16px 24px 48px; max-width: 1400px; margin: 0 auto; }
   background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radio); padding: 12px;
 }
 .filtros label, .barra-detalle label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); min-width: 150px; flex: 1 1 150px; }
-select, input[type="search"], input[type="number"], textarea {
+select, input[type="search"], input[type="number"], input[type="text"], textarea {
   font: inherit; color: var(--text-primary); background: var(--surface-1);
   border: 1px solid var(--border); border-radius: 8px; height: 34px; padding: 0 10px; width: 100%;
 }
@@ -194,6 +194,10 @@ select.activo { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--a
 .tarjeta { margin: 0; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radio); padding: 16px; box-shadow: var(--shadow); min-width: 0; }
 .tarjeta.ancho { grid-column: 1 / -1; }
 figcaption, .tarjeta h3 { font-weight: 600; font-size: 14px; margin-bottom: 10px; }
+.cab-grafico { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sel-anio { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: var(--text-secondary); }
+.sel-anio select { width: auto; height: 30px; }
+.fila-cfg.param { grid-template-columns: 1fr 180px; }
 figcaption small { font-weight: 400; color: var(--text-muted); margin-left: 6px; }
 .lienzo { position: relative; height: 280px; }
 .lienzo-alto { height: 360px; }

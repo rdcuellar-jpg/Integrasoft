@@ -1,7 +1,8 @@
 /*
  * Motor de cálculo de indicadores — replica las fórmulas del libro
- * "Base para Indicadores.xlsx" (hojas Datos Indicadores, Indicadores Seguimiento
- * y Ficha de Indicadores) a partir de la fuente manual de la Hoja1.
+ * "Base para Indicadores.xlsx" (hojas Base Calculo, Datos Indicadores,
+ * Indicadores Seguimiento y Ficha de Indicadores) a partir de la fuente
+ * manual de la Hoja1.
  *
  * Funciona en el navegador (window.Indicadores) y en Node (module.exports).
  */
@@ -11,26 +12,43 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var EXCLUIDOS = ['Nuevo / Identificado', 'Asignación'];
+  var EXCLUIDO = 'Excluido';
+  var SIN_MAPEAR = 'Sin mapear';
 
-  // Estado -> Fase (Datos Indicadores!A13:B22)
+  // Estado -> Fase (Datos Indicadores!A13:B27, editable en Configuración).
+  // La fase "Cerrado" define En flujo = Cerrado; el resto de fases, Abierto.
   var ESTADOS = [
     ['Levantamiento Requerimiento', 'Análisis'],
-    ['Realizar Mockups', 'Análisis'],
-    ['Documentación', 'Análisis'],
+    ['especificaciones Funcionales', 'Análisis'],
     ['Aprobación cliente', 'Análisis'],
-    ['Revisión (sol)', 'Análisis'],
+    ['Aprobacion PO', 'Análisis'],
+    ['Backlog', 'Análisis'],
     ['En desarrollo', 'Desarrollo'],
     ['Revisión (IDS)', 'Desarrollo'],
-    ['Testing', 'Pruebas'],
+    ['Pruebas funcionales y Documentación', 'Pruebas'],
+    ['Entrega a Operaciones', 'Cerrado'],
     ['Entrega', 'Cerrado'],
-    ['CIERRE en Desarrollo o Solución', 'Cerrado']
+    ['CIERRE en Desarrollo o Solución', 'Cerrado'],
+    ['Cierre', 'Cerrado'],
+    ['Garantía HU', 'Cerrado'],
+    ['Nuevo / Identificado', EXCLUIDO],
+    ['Asignación', EXCLUIDO]
   ];
   var FASES = ['Análisis', 'Desarrollo', 'Pruebas', 'Cerrado'];
   var TIPOS_SOLICITUD = ['Desarrollo Contratado', 'Mejora Funcional', 'Deuda Tecnica', 'Sin clasificar'];
   var SIN_MODULO = 'Sin módulo identificado';
   var SIN_SPRINT = 'Sin sprint';
   var SIN_CLIENTE = 'Sin cliente';
+  var SIN_CLASIFICAR = 'Sin clasificar';
+
+  // Parámetros de Datos Indicadores (columna J y celdas de entrada)
+  var PARAMETROS = {
+    tipoExcluidoBacklog: 'Deuda Tecnica', // J55
+    marcaAlcance: 'Cambio de Alcance',    // J58
+    marcaRetrabajo: 'Retrabajo*',         // J59 (admite comodines * y ?)
+    horasContratadas: null,               // C56
+    anio: null                            // E65 (null = año actual)
+  };
 
   // Tabla de módulos por palabra clave (Indicadores Seguimiento!J6:K60).
   // Se aplica la primera coincidencia de arriba hacia abajo.
@@ -50,44 +68,44 @@
     ['elaboracion de documentos', 'Contabilidad'], ['ctos automaticos', 'Contabilidad']
   ];
 
-  // KPIs (Datos Indicadores!A49:I58 + Ficha de Indicadores)
+  // KPIs (Datos Indicadores!A54:I63 + Ficha de Indicadores)
   var KPIS = [
     { id: 'deuda', nombre: '% Deuda técnica / backlog total', meta: 0.20, tipoMeta: '<=', grupo: 'plantilla',
       definicion: 'Proporción de ítems del backlog clasificados como deuda técnica respecto al total de ítems del backlog.',
       formula: '(N° de ítems de deuda técnica / N° total de ítems del backlog) x 100', frecuencia: 'Mensual',
       responsable: 'Product Owner', criterio: 'HU con Tipo de Solicitud = Deuda Tecnica / total HU consideradas' },
-    { id: 'roadmap', nombre: '% Cumplimiento del Roadmap', meta: 0.90, tipoMeta: '>=', grupo: 'plantilla',
-      definicion: 'Porcentaje de entregas realizadas cumpliendo la fecha de finalización en el período respecto a las planificadas.',
-      formula: '(N° de entregas realizadas / N° de entregas planificadas) x 100', frecuencia: 'Mensual',
-      responsable: 'Director de Soluciones / PO', criterio: 'HU con En flujo = Cerrado (Entrega / CIERRE) / total HU consideradas' },
-    { id: 'automatizacion', nombre: '% Automatización de pruebas', meta: 0.70, tipoMeta: '>=', grupo: 'plantilla', manual: true,
-      definicion: 'Proporción de casos de prueba ejecutados de forma automatizada respecto al total.',
-      formula: '(N° de pruebas automatizadas / N° total de pruebas) x 100', frecuencia: 'Mensual',
-      responsable: 'Líder de QA', criterio: 'Sin datos en la base: requiere N° de pruebas automatizadas y total de pruebas' },
-    { id: 'refinement', nombre: 'Precisión backlog refinement', meta: 0.85, tipoMeta: '>=', grupo: 'plantilla', manual: true,
-      definicion: 'Historias refinadas que no requirieron retrabajo o reapertura una vez ingresadas al sprint.',
+    { id: 'backlog', nombre: '% Cumplimiento del Backlog', meta: 0.90, tipoMeta: '>=', grupo: 'plantilla',
+      definicion: 'Porcentaje de HU del backlog cerradas (Entrega / CIERRE) respecto al total de HU consideradas, sin incluir las de deuda técnica.',
+      formula: '(N° HU cerradas sin deuda técnica / N° HU consideradas sin deuda técnica) x 100', frecuencia: 'Mensual',
+      responsable: 'Director de Soluciones / PO', criterio: 'HU cerradas / HU consideradas, sin incluir el Tipo de Solicitud excluido (parámetro)' },
+    { id: 'horas', nombre: 'Control de consumo de horas de desarrollo', meta: 1, tipoMeta: '<=', grupo: 'plantilla', unidad: 'h',
+      definicion: 'Cantidad de horas que se consumen de las horas contratadas, no debe ser superior al 100%.',
+      formula: '(N° horas ejecutadas / N° horas contratadas) x 100', frecuencia: 'Mensual',
+      responsable: 'Líder de QA', criterio: 'Horas ejecutadas (Trabajo total de las HU consideradas) vs horas contratadas (ingresar en Configuración)' },
+    { id: 'refinement', nombre: 'Precisión backlog refinement', meta: 0.85, tipoMeta: '>=', grupo: 'plantilla',
+      definicion: 'Historias en sprint que no tienen marca de retrabajo/cambio de alcance en la columna Precisión HU.',
       formula: '(N° de historias sin retrabajo / N° total de historias refinadas) x 100', frecuencia: 'Mensual',
-      responsable: 'Product Owner', criterio: 'Sin datos en la base: requiere marca de retrabajo/reapertura por HU' },
-    { id: 'alcance', nombre: '% Cambios de alcance post-firma', meta: 0.10, tipoMeta: '<=', grupo: 'plantilla', manual: true,
+      responsable: 'Product Owner', criterio: 'HU consideradas con sprint asignado y sin marca en Precisión HU / total HU consideradas con sprint' },
+    { id: 'alcance', nombre: '% Cambios de alcance post-firma', meta: 0.10, tipoMeta: '<=', grupo: 'plantilla',
       definicion: 'Requerimientos modificados después de su aprobación formal.',
       formula: '(N° de requerimientos con cambio post-firma / N° total firmados) x 100', frecuencia: 'Mensual',
-      responsable: 'Analista Funcional Líder', criterio: 'Sin datos en la base: requiere marca de cambio de alcance tras aprobación' },
-    { id: 'ambiguedad', nombre: '% Retrabajo por ambigüedad', meta: 0.08, tipoMeta: '<=', grupo: 'plantilla', manual: true,
+      responsable: 'Analista Funcional Líder', criterio: "HU con marca 'Cambio de Alcance' en Precisión HU / total HU consideradas" },
+    { id: 'ambiguedad', nombre: '% Retrabajo por ambigüedad', meta: 0.08, tipoMeta: '<=', grupo: 'plantilla',
       definicion: 'Requerimientos retrabajados por especificaciones ambiguas o incompletas.',
       formula: '(N° retrabajados por ambigüedad / N° total de requerimientos) x 100', frecuencia: 'Mensual',
-      responsable: 'Analista Funcional Líder', criterio: 'Sin datos en la base: requiere marca de retrabajo por ambigüedad' },
+      responsable: 'Analista Funcional Líder', criterio: "HU con marca 'Retrabajo por ambigüedad' en Precisión HU / total HU consideradas" },
     { id: 'analisis', nombre: '% HU en Análisis', meta: null, tipoMeta: '', grupo: 'flujo',
-      definicion: 'HU en Levantamiento, Mockups, Documentación, Aprobación cliente o Revisión (sol).',
+      definicion: 'HU en Levantamiento Requerimiento, especificaciones Funcionales, Aprobación cliente, Aprobacion PO o Backlog.',
       formula: '(N° HU en Análisis / N° HU consideradas) x 100', frecuencia: 'Mensual',
-      responsable: 'Analista Funcional Líder', criterio: 'Levantamiento, Mockups, Documentación, Aprobación cliente, Revisión (sol)' },
+      responsable: 'Analista Funcional Líder', criterio: 'Estados con fase Análisis' },
     { id: 'desarrollo', nombre: '% HU en Desarrollo', meta: null, tipoMeta: '', grupo: 'flujo',
       definicion: 'HU en estado En desarrollo o Revisión (IDS).',
       formula: '(N° HU en Desarrollo / N° HU consideradas) x 100', frecuencia: 'Mensual',
-      responsable: 'Líder de Desarrollo', criterio: 'En desarrollo, Revisión (IDS)' },
+      responsable: 'Líder de Desarrollo', criterio: 'Estados con fase Desarrollo' },
     { id: 'pruebas', nombre: '% HU en Pruebas', meta: null, tipoMeta: '', grupo: 'flujo',
-      definicion: 'HU en estado Testing.',
-      formula: '(N° HU en Testing / N° HU consideradas) x 100', frecuencia: 'Mensual',
-      responsable: 'Líder de QA', criterio: 'Testing' },
+      definicion: 'HU en estado Pruebas funcionales y Documentación.',
+      formula: '(N° HU en Pruebas / N° HU consideradas) x 100', frecuencia: 'Mensual',
+      responsable: 'Líder de QA', criterio: 'Estados con fase Pruebas' },
     { id: 'abiertas', nombre: '% HU Abiertas', meta: null, tipoMeta: '', grupo: 'flujo',
       definicion: 'HU con En flujo = Abierto sobre el total considerado.',
       formula: '(N° HU abiertas / N° HU consideradas) x 100', frecuencia: 'Mensual',
@@ -97,10 +115,10 @@
   // Columnas de la Hoja1 (primer bloque "Paquetes de trabajo"; el bloque
   // "Relaciones" repite encabezados y se ignora).
   var COLUMNAS = {
-    id: 'ID', asunto: 'Asunto', tipo: 'Tipo', cliente: 'Cliente', estado: 'Estado',
-    enFlujo: 'En flujo', trabajoTotal: 'Trabajo total', asignado: 'Asignado a',
-    fechaInicio: 'Fecha de inicio', fechaFin: 'Fecha de finalización',
-    responsable: 'Responsable', tipoSolicitud: 'Tipo de Solicitud', sprint: 'Sprint'
+    id: 'ID', asunto: 'Asunto', sprint: 'Sprint', tipo: 'Tipo', tipoSolicitud: 'Tipo de Solicitud',
+    cliente: 'Cliente', estado: 'Estado', trabajo: 'Trabajo', trabajoTotal: 'Trabajo total',
+    asignado: 'Asignado a', fechaInicio: 'Fecha de inicio', fechaFin: 'Fecha de finalización',
+    precision: 'Precisión HU', responsable: 'Responsable'
   };
 
   function texto(v) {
@@ -112,14 +130,21 @@
     return texto(s).toLowerCase();
   }
 
+  /** Coincidencia tipo COUNTIFS: sin distinguir mayúsculas y con comodines * y ?. */
+  function coincideCriterio(valor, patron) {
+    var p = texto(patron);
+    if (!p) return texto(valor) === '';
+    var re = p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+    return new RegExp('^' + re + '$', 'i').test(texto(valor));
+  }
+
   /** Convierte "dd-mm-aaaa", Date o serial de Excel a Date (o null). */
   function parseFecha(v) {
     if (v === null || v === undefined || v === '') return null;
     if (v instanceof Date) return isNaN(v) ? null : new Date(v.getFullYear(), v.getMonth(), v.getDate());
     if (typeof v === 'number') {
       // Serial de Excel (sistema 1900)
-      var ms = Math.round((v - 25569) * 86400000);
-      var d = new Date(ms);
+      var d = new Date(Math.round((v - 25569) * 86400000));
       return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
     }
     var s = texto(v);
@@ -128,6 +153,12 @@
     m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
     if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
     return null;
+  }
+
+  function numero(v) {
+    if (typeof v === 'number') return isFinite(v) ? v : 0;
+    var s = texto(v).replace(',', '.');
+    return s && !isNaN(s) ? Number(s) : 0;
   }
 
   function claveMes(d) {
@@ -159,13 +190,23 @@
     return SIN_MODULO;
   }
 
+  function mapaFases(estados) {
+    var m = {};
+    (estados || ESTADOS).forEach(function (e) { m[texto(e[0])] = texto(e[1]); });
+    return m;
+  }
+
   /**
    * Convierte la matriz de la Hoja1 (array de arrays) en registros únicos de HU.
    * La base repite la HU por cada relación: se toma la primera aparición del ID
-   * (equivalente a Aux: Registro único HU).
+   * (equivalente a Base Calculo!B "Única").
+   * @param opciones { palabras, estados } (también acepta solo el array de palabras)
    */
-  function parsearHoja(matriz, palabras) {
-    palabras = palabras || PALABRAS_CLAVE;
+  function parsearHoja(matriz, opciones) {
+    if (Array.isArray(opciones)) opciones = { palabras: opciones };
+    opciones = opciones || {};
+    var palabras = opciones.palabras || PALABRAS_CLAVE;
+    var fases = mapaFases(opciones.estados);
     var enc = detectarEncabezados(matriz);
     if (!enc) throw new Error('No se encontró la fila de encabezados (se esperan columnas "ID" y "Estado").');
     var m = enc.mapa;
@@ -182,35 +223,36 @@
       var get = function (campo) { return m[campo] === undefined ? '' : fila[m[campo]]; };
       var fin = parseFecha(get('fechaFin'));
       var estado = texto(get('estado'));
+      var fase = fases.hasOwnProperty(estado) ? fases[estado] : SIN_MAPEAR;
+      var considerada = fase !== EXCLUIDO && fase !== SIN_MAPEAR;
       var registro = {
         id: id,
         asunto: texto(get('asunto')),
         tipo: texto(get('tipo')),
         cliente: texto(get('cliente')) || SIN_CLIENTE,
         estado: estado,
-        enFlujo: texto(get('enFlujo')),
-        trabajoTotal: get('trabajoTotal') === '' || get('trabajoTotal') == null ? null : Number(get('trabajoTotal')),
+        fase: fase,
+        considerada: considerada,
+        enFlujo: considerada ? (fase === 'Cerrado' ? 'Cerrado' : 'Abierto') : '',
+        trabajo: numero(get('trabajo')),
+        trabajoTotal: numero(get('trabajoTotal')),
         asignado: texto(get('asignado')),
+        responsable: texto(get('responsable')),
         fechaInicio: parseFecha(get('fechaInicio')),
         fechaFin: fin,
         mesFin: claveMes(fin),
-        responsable: texto(get('responsable')),
-        tipoSolicitud: texto(get('tipoSolicitud')) || 'Sin clasificar',
+        tipoSolicitud: texto(get('tipoSolicitud')) || SIN_CLASIFICAR,
         sprint: texto(get('sprint')) || SIN_SPRINT,
+        precision: texto(get('precision')),
         fila: r + 1
       };
       registro.modulo = asignarModulo(registro.asunto, palabras);
-      registro.fase = faseDe(estado);
-      registro.considerada = EXCLUIDOS.indexOf(estado) === -1;
+      registro.enSprint = considerada && registro.sprint !== SIN_SPRINT;
       registros.push(registro);
     }
-    return { registros: registros, filasLeidas: filasLeidas, filaEncabezado: enc.fila + 1 };
-  }
-
-  function faseDe(estado) {
-    for (var i = 0; i < ESTADOS.length; i++) if (ESTADOS[i][0] === estado) return ESTADOS[i][1];
-    if (EXCLUIDOS.indexOf(estado) !== -1) return 'Excluido';
-    return 'Sin fase';
+    var columnas = {};
+    Object.keys(m).forEach(function (k) { columnas[k] = true; });
+    return { registros: registros, filasLeidas: filasLeidas, filaEncabezado: enc.fila + 1, columnas: columnas };
   }
 
   function contar(lista, fn) {
@@ -231,104 +273,108 @@
     return resultado >= meta ? 'EN META' : 'FUERA DE META';
   }
 
+  function tipoNormalizado(h) {
+    return TIPOS_SOLICITUD.indexOf(h.tipoSolicitud) === -1 ? SIN_CLASIFICAR : h.tipoSolicitud;
+  }
+
   /** Tabla cruzada: filas = valores de `campo`, columnas = Tipo de Solicitud. */
-  function cruzarPorTipo(lista, campo, ordenFilas) {
+  function cruzarPorTipo(lista, campo) {
     var filas = {};
     lista.forEach(function (h) {
-      var k = h[campo];
+      var k = h[campo] || (campo === 'asignado' ? 'Sin asignar' : '(vacío)');
       if (!filas[k]) {
         filas[k] = { nombre: k, total: 0 };
         TIPOS_SOLICITUD.forEach(function (t) { filas[k][t] = 0; });
       }
-      var t = TIPOS_SOLICITUD.indexOf(h.tipoSolicitud) === -1 ? 'Sin clasificar' : h.tipoSolicitud;
-      filas[k][t]++;
+      filas[k][tipoNormalizado(h)]++;
       filas[k].total++;
     });
     var arr = Object.keys(filas).map(function (k) { return filas[k]; });
-    arr.sort(function (a, b) {
-      if (ordenFilas) {
-        var ia = ordenFilas.indexOf(a.nombre), ib = ordenFilas.indexOf(b.nombre);
-        if (ia !== ib) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
-      }
-      return b.total - a.total || String(a.nombre).localeCompare(String(b.nombre));
-    });
+    arr.sort(function (a, b) { return b.total - a.total || String(a.nombre).localeCompare(String(b.nombre)); });
     var total = lista.length;
     arr.forEach(function (f) { f.pct = total ? f.total / total : 0; });
+    return arr;
+  }
+
+  function alFinal(arr, nombre) {
+    var i = arr.findIndex(function (f) { return f.nombre === nombre; });
+    if (i !== -1) arr.push(arr.splice(i, 1)[0]);
     return arr;
   }
 
   /**
    * Calcula todos los indicadores.
    * @param registros  registros únicos (ya filtrados por el usuario)
-   * @param config     { metas: {id: {meta, tipoMeta}}, manuales: {id: {num, den}} }
+   * @param config     { metas: {id: {meta, tipoMeta}}, parametros: {...}, estados: [[estado, fase]] }
    */
   function calcular(registros, config) {
     config = config || {};
     var metas = config.metas || {};
-    var manuales = config.manuales || {};
+    var par = Object.assign({}, PARAMETROS, config.parametros || {});
+    var estados = config.estados || ESTADOS;
 
     var consideradas = registros.filter(function (h) { return h.considerada; });
     var nC = consideradas.length;
 
+    var excluidos = estados.filter(function (e) { return e[1] === EXCLUIDO; }).map(function (e) { return e[0]; });
     var base = {
       total: registros.length,
-      excluidasNuevo: contar(registros, function (h) { return h.estado === 'Nuevo / Identificado'; }),
-      excluidasAsignacion: contar(registros, function (h) { return h.estado === 'Asignación'; }),
+      excluidos: excluidos.map(function (e) {
+        return { estado: e, n: contar(registros, function (h) { return h.estado === e; }) };
+      }),
+      sinMapear: contar(registros, function (h) { return h.fase === SIN_MAPEAR; }),
       consideradas: nC
     };
 
-    var porEstado = ESTADOS.map(function (e) {
+    var porEstado = estados.filter(function (e) { return e[1] !== EXCLUIDO; }).map(function (e) {
       var n = contar(consideradas, function (h) { return h.estado === e[0]; });
       return { estado: e[0], fase: e[1], n: n, pct: nC ? n / nC : 0 };
     });
-    var sinFase = consideradas.filter(function (h) { return h.fase === 'Sin fase'; });
     var estadosNoListados = {};
-    sinFase.forEach(function (h) { estadosNoListados[h.estado || '(vacío)'] = (estadosNoListados[h.estado || '(vacío)'] || 0) + 1; });
+    registros.forEach(function (h) {
+      if (h.fase === SIN_MAPEAR) { var k = h.estado || '(vacío)'; estadosNoListados[k] = (estadosNoListados[k] || 0) + 1; }
+    });
 
     var porFase = FASES.map(function (f) {
-      var n = porEstado.filter(function (e) { return e.fase === f; }).reduce(function (s, e) { return s + e.n; }, 0);
-      return { fase: f, n: n };
+      var n = contar(consideradas, function (h) { return h.fase === f; });
+      return { fase: f, n: n, pct: nC ? n / nC : 0 };
     });
-    var totalFases = porFase.reduce(function (s, f) { return s + f.n; }, 0);
-    porFase.forEach(function (f) { f.pct = totalFases ? f.n / totalFases : 0; });
-
-    var abiertas = contar(consideradas, function (h) { return h.enFlujo === 'Abierto'; });
-    var cerradas = contar(consideradas, function (h) { return h.enFlujo === 'Cerrado'; });
-    var totalFlujo = abiertas + cerradas;
-    var porFlujo = [
-      { nombre: 'Abierto', n: abiertas, pct: totalFlujo ? abiertas / totalFlujo : 0 },
-      { nombre: 'Cerrado', n: cerradas, pct: totalFlujo ? cerradas / totalFlujo : 0 }
-    ];
-
-    var porTipo = ['Mejora Funcional', 'Deuda Tecnica', 'Desarrollo Contratado', 'Sin clasificar'].map(function (t) {
-      var n = contar(consideradas, function (h) {
-        return t === 'Sin clasificar' ? TIPOS_SOLICITUD.indexOf(h.tipoSolicitud) === -1 || h.tipoSolicitud === t : h.tipoSolicitud === t;
-      });
-      return { nombre: t, n: n, pct: nC ? n / nC : 0 };
-    });
-    var totalTipo = porTipo.reduce(function (s, t) { return s + t.n; }, 0);
-    var deuda = porTipo[1].n;
-
     var fase = {};
     porFase.forEach(function (f) { fase[f.fase] = f.n; });
 
+    var abiertas = contar(consideradas, function (h) { return h.enFlujo === 'Abierto'; });
+    var cerradas = contar(consideradas, function (h) { return h.enFlujo === 'Cerrado'; });
+    var porFlujo = [
+      { nombre: 'Abierto', n: abiertas, pct: nC ? abiertas / nC : 0 },
+      { nombre: 'Cerrado', n: cerradas, pct: nC ? cerradas / nC : 0 }
+    ];
+
+    var porTipo = ['Mejora Funcional', 'Deuda Tecnica', 'Desarrollo Contratado', SIN_CLASIFICAR].map(function (t) {
+      var n = contar(consideradas, function (h) { return tipoNormalizado(h) === t; });
+      return { nombre: t, n: n, pct: nC ? n / nC : 0 };
+    });
+
+    var sinExcluido = consideradas.filter(function (h) { return !coincideCriterio(h.tipoSolicitud, par.tipoExcluidoBacklog) || !texto(par.tipoExcluidoBacklog); });
+    var enSprint = consideradas.filter(function (h) { return h.enSprint; });
+    var horas = consideradas.reduce(function (s, h) { return s + h.trabajoTotal; }, 0);
+    var horasContratadas = par.horasContratadas === '' || par.horasContratadas === null || par.horasContratadas === undefined
+      ? null : Number(par.horasContratadas);
+
     var numDen = {
-      deuda: [deuda, totalTipo],
-      roadmap: [cerradas, totalFlujo],
-      analisis: [fase['Análisis'], totalFases],
-      desarrollo: [fase['Desarrollo'], totalFases],
-      pruebas: [fase['Pruebas'], totalFases],
-      abiertas: [abiertas, totalFlujo]
+      deuda: [contar(consideradas, function (h) { return h.tipoSolicitud === 'Deuda Tecnica'; }), nC],
+      backlog: [contar(sinExcluido, function (h) { return h.enFlujo === 'Cerrado'; }), sinExcluido.length],
+      horas: [horas, horasContratadas],
+      refinement: [contar(enSprint, function (h) { return h.precision === ''; }), enSprint.length],
+      alcance: [contar(consideradas, function (h) { return coincideCriterio(h.precision, par.marcaAlcance); }), nC],
+      ambiguedad: [contar(consideradas, function (h) { return coincideCriterio(h.precision, par.marcaRetrabajo); }), nC],
+      analisis: [fase['Análisis'], nC],
+      desarrollo: [fase['Desarrollo'], nC],
+      pruebas: [fase['Pruebas'], nC],
+      abiertas: [abiertas, nC]
     };
 
     var kpis = KPIS.map(function (k) {
       var nd = numDen[k.id];
-      if (k.manual) {
-        var man = manuales[k.id] || {};
-        var num = man.num === '' || man.num === undefined || man.num === null ? null : Number(man.num);
-        var den = man.den === '' || man.den === undefined || man.den === null ? null : Number(man.den);
-        nd = [num, den];
-      }
       var mt = metas[k.id] || {};
       var meta = mt.meta !== undefined ? mt.meta : k.meta;
       var tipoMeta = mt.tipoMeta !== undefined ? mt.tipoMeta : k.tipoMeta;
@@ -339,44 +385,42 @@
       });
     });
 
-    // HU por mes de finalización
+    // HU por mes de finalización del año seleccionado (Datos Indicadores!A65:C80)
+    var anio = par.anio === 'todos' ? null : Number(par.anio) || new Date().getFullYear();
     var meses = {};
     consideradas.forEach(function (h) {
-      if (h.enFlujo !== 'Abierto' && h.enFlujo !== 'Cerrado') return;
-      var k = h.mesFin || 'sin-fecha';
-      if (!meses[k]) meses[k] = { mes: k, cerradas: 0, abiertas: 0 };
-      if (h.enFlujo === 'Cerrado') meses[k].cerradas++; else meses[k].abiertas++;
+      if (!h.mesFin) return;
+      if (anio && h.fechaFin.getFullYear() !== anio) return;
+      if (!meses[h.mesFin]) meses[h.mesFin] = { mes: h.mesFin, cerradas: 0, abiertas: 0 };
+      if (h.enFlujo === 'Cerrado') meses[h.mesFin].cerradas++; else meses[h.mesFin].abiertas++;
     });
-    var sinFecha = meses['sin-fecha'] || { mes: 'sin-fecha', cerradas: 0, abiertas: 0 };
-    delete meses['sin-fecha'];
-    var claves = Object.keys(meses).sort();
     var mensual = [];
-    if (claves.length) {
-      // Completa los meses intermedios sin datos
-      var p = claves[0].split('-').map(Number), u = claves[claves.length - 1].split('-').map(Number);
-      var y = p[0], mo = p[1];
-      while (y < u[0] || (y === u[0] && mo <= u[1])) {
+    var claves = Object.keys(meses).sort();
+    var desde, hasta;
+    if (anio) { desde = [anio, 1]; hasta = [anio, 12]; }
+    else if (claves.length) { desde = claves[0].split('-').map(Number); hasta = claves[claves.length - 1].split('-').map(Number); }
+    if (desde) {
+      var y = desde[0], mo = desde[1];
+      while (y < hasta[0] || (y === hasta[0] && mo <= hasta[1])) {
         var key = y + '-' + String(mo).padStart(2, '0');
         mensual.push(meses[key] || { mes: key, cerradas: 0, abiertas: 0 });
         mo++; if (mo > 12) { mo = 1; y++; }
       }
     }
+    var enGrafico = mensual.reduce(function (s, m) { return { cerradas: s.cerradas + m.cerradas, abiertas: s.abiertas + m.abiertas }; }, { cerradas: 0, abiertas: 0 });
+    var sinFecha = { cerradas: cerradas - enGrafico.cerradas, abiertas: abiertas - enGrafico.abiertas };
+    var anios = {};
+    consideradas.forEach(function (h) { if (h.fechaFin) anios[h.fechaFin.getFullYear()] = true; });
 
     // Indicadores de seguimiento: HU abiertas
     var abiertasLista = consideradas.filter(function (h) { return h.enFlujo === 'Abierto'; });
     var seguimiento = {
       total: abiertasLista.length,
-      porCliente: cruzarPorTipo(abiertasLista, 'cliente'),
-      porSprint: cruzarPorTipo(abiertasLista, 'sprint'),
-      porModulo: cruzarPorTipo(abiertasLista, 'modulo'),
-      porResponsable: cruzarPorTipo(abiertasLista, 'responsable')
+      porCliente: alFinal(cruzarPorTipo(abiertasLista, 'cliente'), SIN_CLIENTE),
+      porSprint: alFinal(cruzarPorTipo(abiertasLista, 'sprint'), SIN_SPRINT),
+      porModulo: alFinal(cruzarPorTipo(abiertasLista, 'modulo'), SIN_MODULO),
+      porAsignado: alFinal(cruzarPorTipo(abiertasLista, 'asignado'), 'Sin asignar')
     };
-    // "Sin sprint" / "Sin módulo" al final
-    [['porSprint', SIN_SPRINT], ['porModulo', SIN_MODULO]].forEach(function (p) {
-      var arr = seguimiento[p[0]];
-      var i = arr.findIndex(function (f) { return f.nombre === p[1]; });
-      if (i !== -1) arr.push(arr.splice(i, 1)[0]);
-    });
 
     return {
       base: base,
@@ -386,7 +430,10 @@
       porFlujo: porFlujo,
       porTipo: porTipo,
       kpis: kpis,
+      horas: { ejecutadas: horas, contratadas: horasContratadas },
       mensual: mensual,
+      anio: anio,
+      anios: Object.keys(anios).map(Number).sort(),
       sinFecha: sinFecha,
       seguimiento: seguimiento,
       consideradas: consideradas
@@ -394,9 +441,9 @@
   }
 
   return {
-    ESTADOS: ESTADOS, FASES: FASES, TIPOS_SOLICITUD: TIPOS_SOLICITUD, KPIS: KPIS,
-    PALABRAS_CLAVE: PALABRAS_CLAVE, EXCLUIDOS: EXCLUIDOS, SIN_MODULO: SIN_MODULO, SIN_SPRINT: SIN_SPRINT,
+    ESTADOS: ESTADOS, FASES: FASES, TIPOS_SOLICITUD: TIPOS_SOLICITUD, KPIS: KPIS, PARAMETROS: PARAMETROS,
+    PALABRAS_CLAVE: PALABRAS_CLAVE, EXCLUIDO: EXCLUIDO, SIN_MAPEAR: SIN_MAPEAR, SIN_MODULO: SIN_MODULO, SIN_SPRINT: SIN_SPRINT,
     parseFecha: parseFecha, parsearHoja: parsearHoja, asignarModulo: asignarModulo, calcular: calcular,
-    evaluar: evaluar
+    evaluar: evaluar, coincideCriterio: coincideCriterio
   };
 });

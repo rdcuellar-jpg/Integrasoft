@@ -15,7 +15,8 @@
     orden: { campo: 'id', asc: true },
     config: {
       metas: leer('metas', {}),
-      manuales: leer('manuales', {}),
+      parametros: leer('parametros', {}),
+      estados: leer('estados', null) || I.ESTADOS.slice(),
       palabras: leer('palabras', null) || I.PALABRAS_CLAVE.slice()
     }
   };
@@ -95,12 +96,13 @@
   }
 
   function usarMatriz(matriz, fuente, cuando) {
-    var p = I.parsearHoja(matriz, estado.config.palabras);
+    var p = I.parsearHoja(matriz, opcionesParseo());
     estado.matriz = matriz;
     estado.fuente = fuente;
     estado.cargado = cuando;
     estado.registros = p.registros;
     estado.filasLeidas = p.filasLeidas;
+    estado.columnas = p.columnas;
     guardar('datos', { matriz: matriz, fuente: fuente, cargado: cuando.toISOString() });
     $('#zona-carga').hidden = true;
     $('#app').hidden = false;
@@ -108,17 +110,27 @@
     actualizar();
   }
 
+  function opcionesParseo() {
+    return { palabras: estado.config.palabras, estados: estado.config.estados };
+  }
+
   function reparsear() {
     if (!estado.matriz) return;
-    estado.registros = I.parsearHoja(estado.matriz, estado.config.palabras).registros;
+    estado.registros = I.parsearHoja(estado.matriz, opcionesParseo()).registros;
     construirFiltros();
     actualizar();
   }
 
   // ---------- filtros ----------
-  var CAMPOS_FILTRO = ['cliente', 'tipoSolicitud', 'sprint', 'responsable', 'asignado', 'modulo'];
+  var CAMPOS_FILTRO = ['cliente', 'tipoSolicitud', 'sprint', 'responsable', 'asignado', 'modulo', 'precision'];
 
   function construirFiltros() {
+    // Oculta los filtros y columnas cuya columna no viene en la Hoja1 cargada
+    $$('[data-requiere]').forEach(function (el) {
+      var campo = el.getAttribute('data-requiere');
+      el.hidden = !(estado.columnas && estado.columnas[campo]);
+      if (el.hidden) delete estado.filtros[campo];
+    });
     CAMPOS_FILTRO.forEach(function (campo) {
       var sel = $('select[data-filtro="' + campo + '"]');
       var valores = {};
@@ -167,22 +179,18 @@
       (filtros ? ' · <strong>' + filtros + ' filtro(s) activo(s)</strong>' : '');
     var no = Object.keys(r.estadosNoListados);
     $('#fuente-alertas').innerHTML = no.length
-      ? '<span class="alerta">Revisar: estados no listados en la tabla de fases → ' + esc(no.map(function (k) { return k + ' (' + r.estadosNoListados[k] + ')'; }).join(', ')) + '</span>'
+      ? '<span class="alerta">Revisar: estados sin fase asignada (no se cuentan como HU consideradas; asígnelos en Configuración) → ' + esc(no.map(function (k) { return k + ' (' + r.estadosNoListados[k] + ')'; }).join(', ')) + '</span>'
       : '';
   }
 
   function renderResumen() {
-    var b = estado.resultado.base;
-    var datos = [
-      ['HU consideradas', b.consideradas, true],
-      ['Total HU únicas en la base', b.total],
-      ['Excluidas: Nuevo / Identificado', b.excluidasNuevo],
-      ['Excluidas: Asignación', b.excluidasAsignacion],
-      ['HU abiertas', estado.resultado.porFlujo[0].n],
-      ['HU cerradas', estado.resultado.porFlujo[1].n]
-    ];
+    var r = estado.resultado, b = r.base;
+    var datos = [['HU consideradas', b.consideradas, true], ['Total HU únicas en la base', b.total]]
+      .concat(b.excluidos.map(function (e) { return ['Excluidas: ' + e.estado, e.n]; }))
+      .concat(b.sinMapear ? [['Sin fase asignada', b.sinMapear]] : [])
+      .concat([['HU abiertas', r.porFlujo[0].n], ['HU cerradas', r.porFlujo[1].n], ['Horas ejecutadas', r.horas.ejecutadas, false, ' h']]);
     $('#resumen').innerHTML = datos.map(function (d) {
-      return '<div class="dato' + (d[2] ? ' destacado' : '') + '"><div class="etq">' + esc(d[0]) + '</div><div class="val">' + fmtNum.format(d[1]) + '</div></div>';
+      return '<div class="dato' + (d[2] ? ' destacado' : '') + '"><div class="etq">' + esc(d[0]) + '</div><div class="val">' + fmtNum.format(d[1]) + (d[3] || '') + '</div></div>';
     }).join('');
   }
 
@@ -200,8 +208,12 @@
   function textoMeta(k) {
     if (k.meta === null || k.meta === undefined || k.meta === '') return 'Sin meta';
     var base = 'Meta: ' + (k.tipoMeta === '<=' ? '≤ ' : '≥ ') + pct(k.meta, 0);
+    if (k.unidad === 'h') {
+      if (k.resultado === null) return base + ' — ' + fmtNum.format(k.numerador) + ' h ejecutadas; ingresar horas contratadas en Configuración';
+      return base + ' (' + fmtNum.format(k.numerador) + ' h de ' + fmtNum.format(k.denominador) + ' h)';
+    }
     if (k.resultado === null) return base + ' — sin datos en la base';
-    return base + ' (' + fmtNum.format(k.numerador) + ' de ' + fmtNum.format(k.denominador) + (k.manual ? ')' : ' HU)');
+    return base + ' (' + fmtNum.format(k.numerador) + ' de ' + fmtNum.format(k.denominador) + ' HU)';
   }
 
   function tarjetaKpi(k) {
@@ -381,6 +393,7 @@
     });
 
     // Por estado: un dataset por fase para tener leyenda y color por entidad
+    document.getElementById('g-estado').parentNode.style.height = Math.max(220, r.porEstado.length * 30 + 70) + 'px';
     grafico('g-estado', {
       type: 'bar',
       data: {
@@ -415,7 +428,13 @@
       }
     });
     $('#nota-mensual').textContent = 'Nota: ' + r.sinFecha.cerradas + ' HU cerradas y ' + r.sinFecha.abiertas +
-      ' abierta(s) no tienen fecha de finalización y no aparecen en el gráfico mensual.';
+      ' abierta(s) no tienen fecha de finalización' + (r.anio ? ' en ' + r.anio : '') + ' y no aparecen en el gráfico mensual.';
+    var anios = r.anios.slice();
+    if (r.anio && anios.indexOf(r.anio) === -1) anios.push(r.anio);
+    anios.sort();
+    $('#sel-anio').innerHTML = anios.map(function (a) {
+      return '<option value="' + a + '"' + (a === r.anio ? ' selected' : '') + '>' + a + '</option>';
+    }).join('') + '<option value="todos"' + (r.anio ? '' : ' selected') + '>Todos</option>';
 
     var ct = colorTipo(c);
     grafico('g-tipo', {
@@ -490,7 +509,7 @@
 
   function renderSeguimiento() {
     var s = estado.resultado.seguimiento;
-    [['cliente', 'porCliente', 'Cliente'], ['sprint', 'porSprint', 'Sprint'], ['modulo', 'porModulo', 'Módulo'], ['responsable', 'porResponsable', 'Responsable']]
+    [['cliente', 'porCliente', 'Cliente'], ['sprint', 'porSprint', 'Sprint'], ['modulo', 'porModulo', 'Módulo'], ['asignado', 'porAsignado', 'Asignado a']]
       .forEach(function (p) {
         tablaCruzada('#t-seg-' + p[0], s[p[1]], s.total, p[2]);
         if (typeof Chart !== 'undefined') graficoApilado('g-seg-' + p[0], s[p[1]]);
@@ -501,8 +520,12 @@
   var COLS_DETALLE = [
     ['id', 'ID'], ['asunto', 'Asunto'], ['cliente', 'Cliente'], ['estado', 'Estado'], ['fase', 'Fase'],
     ['enFlujo', 'En flujo'], ['tipoSolicitud', 'Tipo de Solicitud'], ['sprint', 'Sprint'], ['modulo', 'Módulo'],
-    ['responsable', 'Responsable'], ['asignado', 'Asignado a'], ['fechaFin', 'Fecha finalización']
+    ['responsable', 'Responsable'], ['asignado', 'Asignado a'], ['trabajoTotal', 'Trabajo total (h)'],
+    ['fechaFin', 'Fecha finalización'], ['precision', 'Precisión HU']
   ];
+  function colsDetalle() {
+    return COLS_DETALLE.filter(function (c) { return c[0] !== 'responsable' || (estado.columnas && estado.columnas.responsable); });
+  }
 
   function filasDetalle() {
     var q = $('#buscar').value.trim().toLowerCase();
@@ -514,14 +537,14 @@
       if (flujo && r.enFlujo !== flujo) return false;
       if (fase && r.fase !== fase) return false;
       if (q) {
-        var txt = [r.id, r.asunto, r.cliente, r.estado, r.responsable, r.asignado, r.sprint, r.modulo].join(' ').toLowerCase();
+        var txt = [r.id, r.asunto, r.cliente, r.estado, r.responsable, r.asignado, r.sprint, r.modulo, r.precision].join(' ').toLowerCase();
         if (txt.indexOf(q) === -1) return false;
       }
       return true;
     }).sort(function (a, b) {
       var va = a[o.campo], vb = b[o.campo], res;
       if (va instanceof Date || vb instanceof Date) res = (va ? va.getTime() : Infinity) - (vb ? vb.getTime() : Infinity);
-      else if (o.campo === 'id') res = Number(va) - Number(vb) || String(va).localeCompare(String(vb));
+      else if (o.campo === 'id' || o.campo === 'trabajoTotal') res = Number(va) - Number(vb) || String(va).localeCompare(String(vb));
       else res = String(va || '').localeCompare(String(vb || ''), 'es');
       return o.asc ? res : -res;
     });
@@ -531,14 +554,14 @@
     var filas = filasDetalle();
     var o = estado.orden;
     $('#contador-detalle').textContent = fmtNum.format(filas.length) + ' HU';
-    $('#t-detalle').innerHTML = '<thead><tr>' + COLS_DETALLE.map(function (c) {
+    $('#t-detalle').innerHTML = '<thead><tr>' + colsDetalle().map(function (c) {
       var flecha = o.campo === c[0] ? (o.asc ? ' ▲' : ' ▼') : '';
       return '<th><button class="btn-texto" data-orden="' + c[0] + '" style="all:unset;cursor:pointer">' + esc(c[1]) + flecha + '</button></th>';
     }).join('') + '</tr></thead><tbody>' + filas.map(function (r) {
-      return '<tr>' + COLS_DETALLE.map(function (c) {
+      return '<tr>' + colsDetalle().map(function (c) {
         var v = r[c[0]];
         if (c[0] === 'fechaFin') v = fecha(v);
-        var cls = c[0] === 'asunto' ? ' class="asunto"' : c[0] === 'id' ? ' class="num"' : '';
+        var cls = c[0] === 'asunto' ? ' class="asunto"' : c[0] === 'id' || c[0] === 'trabajoTotal' ? ' class="num"' : '';
         if (c[0] === 'enFlujo' || c[0] === 'fase') return '<td><span class="chip">' + esc(v) + '</span></td>';
         return '<td' + cls + '>' + esc(v) + '</td>';
       }).join('') + '</tr>';
@@ -547,8 +570,8 @@
 
   function exportarCsv() {
     var filas = filasDetalle();
-    var csv = [COLS_DETALLE.map(function (c) { return c[1]; })].concat(filas.map(function (r) {
-      return COLS_DETALLE.map(function (c) { return c[0] === 'fechaFin' ? fecha(r[c[0]]) : r[c[0]]; });
+    var csv = [colsDetalle().map(function (c) { return c[1]; })].concat(filas.map(function (r) {
+      return colsDetalle().map(function (c) { return c[0] === 'fechaFin' ? fecha(r[c[0]]) : r[c[0]]; });
     })).map(function (f) {
       return f.map(function (v) { v = String(v === null || v === undefined ? '' : v); return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(';');
     }).join('\r\n');
@@ -576,7 +599,7 @@
   function renderConfig() {
     if (renderConfig.hecho) return;
     renderConfig.hecho = true;
-    var metas = estado.config.metas, man = estado.config.manuales;
+    var metas = estado.config.metas, par = Object.assign({}, I.PARAMETROS, estado.config.parametros);
     $('#cfg-metas').innerHTML = '<div class="fila-cfg"><span class="cab">Indicador</span><span class="cab">Tipo</span><span class="cab">Meta (%)</span></div>' +
       I.KPIS.map(function (k) {
         var m = metas[k.id] || {};
@@ -584,15 +607,20 @@
         var tipo = m.tipoMeta !== undefined ? m.tipoMeta : k.tipoMeta;
         return '<div class="fila-cfg"><span>' + esc(k.nombre) + '</span>' +
           '<select data-meta-tipo="' + k.id + '" aria-label="Tipo de meta"><option value="">—</option><option' + (tipo === '<=' ? ' selected' : '') + '>&lt;=</option><option' + (tipo === '>=' ? ' selected' : '') + '>&gt;=</option></select>' +
-          '<input type="number" min="0" max="100" step="0.1" data-meta="' + k.id + '" value="' + (meta === null || meta === '' ? '' : +(meta * 100).toFixed(2)) + '" aria-label="Meta"></div>';
+          '<input type="number" min="0" max="1000" step="0.1" data-meta="' + k.id + '" value="' + (meta === null || meta === '' ? '' : +(meta * 100).toFixed(2)) + '" aria-label="Meta"></div>';
       }).join('');
-    $('#cfg-manuales').innerHTML = '<div class="fila-cfg manual"><span class="cab">Indicador</span><span class="cab">Numerador</span><span class="cab">Denominador</span></div>' +
-      I.KPIS.filter(function (k) { return k.manual; }).map(function (k) {
-        var m = man[k.id] || {};
-        return '<div class="fila-cfg manual"><span>' + esc(k.nombre) + '<br><small class="nota">' + esc(k.formula) + '</small></span>' +
-          '<input type="number" min="0" step="1" data-man="' + k.id + '" data-parte="num" value="' + esc(m.num !== undefined ? m.num : '') + '" aria-label="Numerador">' +
-          '<input type="number" min="0" step="1" data-man="' + k.id + '" data-parte="den" value="' + esc(m.den !== undefined ? m.den : '') + '" aria-label="Denominador"></div>';
-      }).join('');
+    var campos = [
+      ['horasContratadas', 'Horas contratadas (KPI Control de consumo de horas)', 'number'],
+      ['tipoExcluidoBacklog', 'Tipo de Solicitud excluido del % Cumplimiento del Backlog', 'text'],
+      ['marcaAlcance', "Marca en Precisión HU para '% Cambios de alcance'", 'text'],
+      ['marcaRetrabajo', "Marca en Precisión HU para '% Retrabajo por ambigüedad'", 'text']
+    ];
+    $('#cfg-parametros').innerHTML = campos.map(function (c) {
+      var v = par[c[0]];
+      return '<div class="fila-cfg param"><span>' + esc(c[1]) + '</span>' +
+        '<input type="' + c[2] + '"' + (c[2] === 'number' ? ' min="0" step="1"' : '') + ' data-param="' + c[0] + '" value="' + esc(v === null || v === undefined ? '' : v) + '" aria-label="' + esc(c[1]) + '"></div>';
+    }).join('');
+    $('#cfg-estados').value = estado.config.estados.map(function (e) { return e[0] + ' => ' + e[1]; }).join('\n');
     $('#cfg-palabras').value = estado.config.palabras.map(function (p) { return p[0] + ' => ' + p[1]; }).join('\n');
   }
 
@@ -608,23 +636,42 @@
     actualizar();
   }
 
-  function leerManuales() {
-    var man = {};
-    $$('[data-man]').forEach(function (inp) {
-      var id = inp.getAttribute('data-man');
-      man[id] = man[id] || {};
-      man[id][inp.getAttribute('data-parte')] = inp.value;
-    });
-    estado.config.manuales = man;
-    guardar('manuales', man);
+  function guardarParametros(cambios) {
+    estado.config.parametros = Object.assign({}, estado.config.parametros, cambios);
+    guardar('parametros', estado.config.parametros);
     actualizar();
   }
 
-  function guardarPalabras() {
-    var reglas = $('#cfg-palabras').value.split(/\r?\n/).map(function (l) {
+  function leerParametros() {
+    var cambios = {};
+    $$('[data-param]').forEach(function (inp) {
+      var k = inp.getAttribute('data-param');
+      cambios[k] = inp.type === 'number' ? (inp.value === '' ? null : Number(inp.value)) : inp.value.trim();
+    });
+    guardarParametros(cambios);
+  }
+
+  function leerReglas(id) {
+    return $(id).value.split(/\r?\n/).map(function (l) {
       var p = l.split('=>');
       return p.length === 2 ? [p[0].trim(), p[1].trim()] : null;
     }).filter(function (p) { return p && p[0] && p[1]; });
+  }
+
+  function guardarEstados() {
+    var reglas = leerReglas('#cfg-estados');
+    var validas = I.FASES.concat([I.EXCLUIDO]);
+    var malas = reglas.filter(function (r) { return validas.indexOf(r[1]) === -1; });
+    if (!reglas.length) { toast('No se encontraron reglas válidas (formato: Estado => Fase).'); return; }
+    if (malas.length) { toast('Fase no válida en: ' + malas.map(function (r) { return r[0]; }).join(', ') + '. Use ' + validas.join(', ') + '.'); return; }
+    estado.config.estados = reglas;
+    guardar('estados', reglas);
+    reparsear();
+    toast(reglas.length + ' estados aplicados');
+  }
+
+  function guardarPalabras() {
+    var reglas = leerReglas('#cfg-palabras');
     if (!reglas.length) { toast('No se encontraron reglas válidas (formato: palabra => Módulo).'); return; }
     estado.config.palabras = reglas;
     guardar('palabras', reglas);
@@ -690,11 +737,13 @@
     $('#btn-exportar').addEventListener('click', exportarCsv);
 
     $('#cfg-metas').addEventListener('change', leerMetas);
-    $('#cfg-manuales').addEventListener('change', leerManuales);
+    $('#cfg-parametros').addEventListener('change', leerParametros);
+    $('#btn-guardar-estados').addEventListener('click', guardarEstados);
+    $('#sel-anio').addEventListener('change', function (e) { guardarParametros({ anio: e.target.value === 'todos' ? 'todos' : Number(e.target.value) }); });
     $('#btn-guardar-palabras').addEventListener('click', guardarPalabras);
     $('#btn-restaurar').addEventListener('click', function () {
-      estado.config = { metas: {}, manuales: {}, palabras: I.PALABRAS_CLAVE.slice() };
-      ['metas', 'manuales', 'palabras'].forEach(function (k) { try { localStorage.removeItem(CLAVE + k); } catch (e) { /* */ } });
+      estado.config = { metas: {}, parametros: {}, estados: I.ESTADOS.slice(), palabras: I.PALABRAS_CLAVE.slice() };
+      ['metas', 'parametros', 'estados', 'palabras', 'manuales'].forEach(function (k) { try { localStorage.removeItem(CLAVE + k); } catch (e) { /* */ } });
       renderConfig.hecho = false;
       reparsear();
       toast('Configuración restaurada');

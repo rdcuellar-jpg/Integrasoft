@@ -2,31 +2,38 @@
 "cliente": {
 "Las Ceibas": [
 3,
-7,
+6,
 0,
 0,
-10
+9
 ],
 "Integrasoft": [
 0,
-3,
-5,
+1,
+8,
 0,
-8
+9
 ],
 "Cartagena Del Chairá": [
 0,
-5,
-0,
-0,
-5
-],
-"EMCA": [
-2,
-2,
+4,
 0,
 0,
 4
+],
+"Cartagena del Chairá ESP": [
+0,
+0,
+0,
+0,
+0
+],
+"EMCA": [
+2,
+1,
+0,
+0,
+3
 ],
 "Uniamazonía": [
 2,
@@ -69,15 +76,85 @@
 0,
 0,
 1
+],
+"Eaaap Pto Asis": [
+0,
+0,
+0,
+0,
+0
+],
+"Conservatorio Tolima": [
+0,
+0,
+0,
+0,
+0
+],
+"AMB Bucaramanga": [
+0,
+0,
+0,
+0,
+0
+],
+"Supersolidaria": [
+0,
+0,
+0,
+0,
+0
+],
+"EMPULEG": [
+0,
+0,
+0,
+0,
+0
+],
+"Contraloría Atlántico": [
+0,
+0,
+0,
+0,
+0
+],
+"Jaspur La Ulloa": [
+0,
+0,
+0,
+0,
+0
+],
+"Personería Neiva": [
+0,
+0,
+0,
+0,
+0
+],
+"Baylan": [
+0,
+1,
+0,
+0,
+1
+],
+"Sin cliente": [
+0,
+0,
+35,
+0,
+35
 ]
 },
 "sprint": {
 "SPRINT 7 UNIFICADO": [
 5,
+5,
 6,
-4,
 0,
-15
+16
 ],
 "SPRINT 6 UNIFICADO CARRIL B": [
 0,
@@ -116,33 +193,33 @@
 ],
 "Sin sprint": [
 3,
-17,
-1,
+14,
+37,
 0,
-21
+54
 ]
 },
 "modulo": {
 "Facturación y Liquidaciones": [
 2,
-6,
+4,
+14,
 0,
-0,
-8
+20
 ],
 "Nómina": [
 2,
 3,
-2,
+9,
 0,
-7
+14
 ],
 "Contabilidad": [
 1,
+3,
 4,
-2,
 0,
-7
+8
 ],
 "Tesorería": [
 0,
@@ -154,14 +231,14 @@
 "Activos fijos": [
 1,
 2,
+1,
 0,
-0,
-3
+4
 ],
 "ControlBlue / Órdenes de trabajo": [
 0,
-3,
-0,
+2,
+1,
 0,
 3
 ],
@@ -189,9 +266,9 @@
 "Sin módulo identificado": [
 0,
 0,
+13,
 0,
-0,
-0
+13
 ]
 }
 }

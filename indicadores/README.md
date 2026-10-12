@@ -26,41 +26,47 @@ Todo el procesamiento ocurre en el navegador: el archivo no se envía a ningún 
 La fila de encabezados se detecta automáticamente (en la base actual es la fila 2). Se usan las columnas del bloque
 *Paquetes de trabajo* (el bloque *Relaciones* repite encabezados y se ignora):
 
-`ID`, `Asunto`, `Tipo`, `Cliente`, `Estado`, `En flujo`, `Trabajo total`, `Asignado a`, `Fecha de inicio`,
-`Fecha de finalización` (dd-mm-aaaa o fecha de Excel), `Responsable`, `Tipo de Solicitud`, `Sprint`.
+`ID`, `Asunto`, `Sprint`, `Tipo`, `Tipo de Solicitud`, `Cliente`, `Estado`, `Trabajo`, `Trabajo total`, `Asignado a`,
+`Fecha de inicio`, `Fecha de finalización` (dd-mm-aaaa o fecha de Excel) y `Precisión HU`.
+Si la hoja trae además `Responsable`, se habilita su filtro y su columna en el detalle.
 
-## Reglas de cálculo (igual que el Excel)
+## Reglas de cálculo (igual que las hojas Base Calculo y Datos Indicadores)
 
 - Cada HU se cuenta **una sola vez** (la base repite filas por cada relación; se toma la primera aparición del ID).
-- **HU consideradas** = HU únicas excluyendo los estados *Nuevo / Identificado* y *Asignación*.
-- Fases: *Análisis* (Levantamiento Requerimiento, Realizar Mockups, Documentación, Aprobación cliente, Revisión (sol)),
-  *Desarrollo* (En desarrollo, Revisión (IDS)), *Pruebas* (Testing), *Cerrado* (Entrega, CIERRE en Desarrollo o Solución).
-  Si aparece un estado no listado, la app lo advierte en la parte superior.
+- Cada **Estado** tiene una **Fase** (tabla editable en Configuración):
+  *Análisis* (Levantamiento Requerimiento, especificaciones Funcionales, Aprobación cliente, Aprobacion PO, Backlog),
+  *Desarrollo* (En desarrollo, Revisión (IDS)), *Pruebas* (Pruebas funcionales y Documentación),
+  *Cerrado* (Entrega a Operaciones, Entrega, CIERRE en Desarrollo o Solución, Cierre, Garantía HU) y
+  *Excluido* (Nuevo / Identificado, Asignación).
+- **En flujo** se deriva de la fase: *Cerrado* si la fase es Cerrado, *Abierto* en otro caso.
+- **HU consideradas** = HU únicas cuya fase no es Excluido. Un estado que no esté en la tabla queda fuera y la app lo advierte.
 - KPIs:
   | KPI | Cálculo | Meta |
   |---|---|---|
   | % Deuda técnica / backlog total | HU con Tipo de Solicitud = Deuda Tecnica / HU consideradas | ≤ 20% |
-  | % Cumplimiento del Roadmap | HU con En flujo = Cerrado / HU consideradas | ≥ 90% |
-  | % Automatización de pruebas | dato manual | ≥ 70% |
-  | Precisión backlog refinement | dato manual | ≥ 85% |
-  | % Cambios de alcance post-firma | dato manual | ≤ 10% |
-  | % Retrabajo por ambigüedad | dato manual | ≤ 8% |
+  | % Cumplimiento del Backlog | HU cerradas / HU consideradas, ambas sin Deuda Tecnica | ≥ 90% |
+  | Control de consumo de horas de desarrollo | Σ Trabajo total de las HU consideradas / horas contratadas (parámetro) | ≤ 100% |
+  | Precisión backlog refinement | HU consideradas con sprint y sin marca en Precisión HU / HU consideradas con sprint | ≥ 85% |
+  | % Cambios de alcance post-firma | HU con Precisión HU = "Cambio de Alcance" / HU consideradas | ≤ 10% |
+  | % Retrabajo por ambigüedad | HU con Precisión HU = "Retrabajo*" / HU consideradas | ≤ 8% |
   | % HU en Análisis / Desarrollo / Pruebas | HU en la fase / HU consideradas | sin meta |
   | % HU Abiertas | HU con En flujo = Abierto / HU consideradas | sin meta |
+- El gráfico mensual muestra el año elegido (por defecto el actual); las HU sin fecha o fuera del año se informan en la nota.
 - El **módulo** se asigna por palabra clave en el Asunto (primera coincidencia de arriba hacia abajo).
 
-Las metas, los datos manuales de los KPIs sin información en la base y la tabla de palabras clave se editan en la
-pestaña **Configuración** y se guardan en el navegador.
+En la pestaña **Configuración** se editan, y quedan guardados en el navegador: las metas, los parámetros
+(horas contratadas, Tipo de Solicitud excluido del cumplimiento, marcas de Precisión HU con comodines `*` y `?`),
+la tabla de fase por estado y la tabla de palabras clave.
 
 ## Vistas
 
 - **Dashboard**: resumen de la base, tarjetas de KPI con meta y estado, HU por En flujo, fase, estado, mes de
   finalización y Tipo de Solicitud.
-- **Seguimiento HU abiertas**: HU abiertas por Cliente, Sprint, Módulo y Responsable, cruzadas por Tipo de Solicitud.
+- **Seguimiento HU abiertas**: HU abiertas por Cliente, Sprint, Módulo y Asignado a, cruzadas por Tipo de Solicitud.
 - **Detalle HU**: listado con búsqueda, filtros, orden por columna y exportación a CSV.
 - **Ficha de indicadores**: definición, fórmula, frecuencia, meta, responsable y resultado actual.
 
-Los filtros superiores (Cliente, Tipo de Solicitud, Sprint, Responsable, Asignado a, Módulo) se aplican a todas las vistas.
+Los filtros superiores (Cliente, Tipo de Solicitud, Sprint, Asignado a, Módulo, Precisión HU) se aplican a todas las vistas.
 
 ## Estructura
 
@@ -81,5 +87,6 @@ indicadores/
 node --test indicadores/tests/*.test.js
 ```
 
-Las pruebas verifican con la Hoja1 de ejemplo los mismos resultados del libro: 133 HU únicas, 111 consideradas,
-deuda técnica 6,3 %, cumplimiento del roadmap 67,6 %, distribución por estado/fase/mes y las tablas de seguimiento.
+Las pruebas verifican con la Hoja1 de ejemplo los mismos resultados del libro: 173 HU únicas, 151 consideradas,
+deuda técnica 30,5 %, cumplimiento del backlog 74,3 %, 267 horas ejecutadas, precisión del refinement 95,2 %,
+distribución por estado/fase/mes y las tablas de seguimiento.
