@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Indicadores Excelencia Operativa</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Crect x=%223%22 y=%2212%22 width=%224%22 height=%229%22 rx=%221%22 fill=%22%232a78d6%22/%3E%3Crect x=%2210%22 y=%227%22 width=%224%22 height=%2214%22 rx=%221%22 fill=%22%232a78d6%22/%3E%3Crect x=%2217%22 y=%223%22 width=%224%22 height=%2218%22 rx=%221%22 fill=%22%232a78d6%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="js/vendor/xlsx.full.min.js"></script>
+  <script src="js/vendor/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="titulo">
+      <h1>Dashboard de Excelencia Operativa</h1>
+      <p class="sub">Dirección de Soluciones · Historias de Usuario (excluye Nuevo / Identificado y Asignación)</p>
+    </div>
+    <div class="acciones">
+      <label class="btn btn-primario" for="archivo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0-12 4 4m-4-4-4 4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        Cargar Excel / CSV
+      </label>
+      <input id="archivo" type="file" accept=".xlsx,.xls,.csv" hidden>
+      <button class="btn" id="btn-ejemplo" type="button">Datos de ejemplo</button>
+      <button class="btn btn-icono" id="btn-tema" type="button" aria-label="Cambiar tema" title="Cambiar tema">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div id="zona-carga" class="zona-carga">
+    <div class="zona-interna">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0-12 4 4m-4-4-4 4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+      <h2>Carga la fuente de datos</h2>
+      <p>Arrastra aquí el archivo <strong>Base para Indicadores.xlsx</strong> (se lee la hoja <strong>Hoja1</strong>)
+        o un CSV con las mismas columnas: ID, Asunto, Sprint, Tipo de Solicitud, Cliente, Estado, Trabajo total, Asignado a, Fecha de finalización, Precisión HU…</p>
+      <div class="zona-botones">
+        <label class="btn btn-primario" for="archivo">Seleccionar archivo</label>
+        <button class="btn" type="button" data-accion="ejemplo">Usar datos de ejemplo</button>
+      </div>
+    </div>
+  </div>
+
+  <main id="app" hidden>
+    <section class="fuente" aria-live="polite">
+      <span id="fuente-info"></span>
+      <span id="fuente-alertas"></span>
+    </section>
+
+    <section class="filtros" aria-label="Filtros">
+      <label>Cliente<select data-filtro="cliente"></select></label>
+      <label>Tipo de Solicitud<select data-filtro="tipoSolicitud"></select></label>
+      <label>Sprint<select data-filtro="sprint"></select></label>
+      <label data-requiere="responsable">Responsable<select data-filtro="responsable"></select></label>
+      <label>Asignado a<select data-filtro="asignado"></select></label>
+      <label>Módulo<select data-filtro="modulo"></select></label>
+      <label>Precisión HU<select data-filtro="precision"></select></label>
+      <button class="btn btn-texto" id="btn-limpiar" type="button">Limpiar filtros</button>
+    </section>
+
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="dashboard" aria-selected="true">Dashboard</button>
+      <button role="tab" data-tab="seguimiento" aria-selected="false">Seguimiento HU abiertas</button>
+      <button role="tab" data-tab="detalle" aria-selected="false">Detalle HU</button>
+      <button role="tab" data-tab="ficha" aria-selected="false">Ficha de indicadores</button>
+      <button role="tab" data-tab="config" aria-selected="false">Configuración</button>
+    </nav>
+
+    <!-- DASHBOARD -->
+    <section class="panel" data-panel="dashboard">
+      <div class="resumen" id="resumen"></div>
+
+      <h2 class="seccion">Indicadores de la plantilla</h2>
+      <div class="kpis" id="kpis-plantilla"></div>
+
+      <h2 class="seccion">Indicadores de flujo (Estado / En flujo)</h2>
+      <div class="kpis kpis-4" id="kpis-flujo"></div>
+
+      <h2 class="seccion">Distribución de HU</h2>
+      <div class="graficos">
+        <figure class="tarjeta">
+          <figcaption>HU por En flujo</figcaption>
+          <div class="lienzo lienzo-dona"><canvas id="g-flujo"></canvas></div>
+        </figure>
+        <figure class="tarjeta">
+          <figcaption>HU por fase</figcaption>
+          <div class="lienzo"><canvas id="g-fase"></canvas></div>
+        </figure>
+        <figure class="tarjeta ancho">
+          <figcaption>HU por estado <small>color por fase</small></figcaption>
+          <div class="lienzo"><canvas id="g-estado"></canvas></div>
+        </figure>
+        <figure class="tarjeta ancho">
+          <figcaption class="cab-grafico">HU por mes de finalización
+            <label class="sel-anio">Año <select id="sel-anio" aria-label="Año del gráfico mensual"></select></label></figcaption>
+          <div class="lienzo"><canvas id="g-mensual"></canvas></div>
+          <p class="nota" id="nota-mensual"></p>
+        </figure>
+        <figure class="tarjeta">
+          <figcaption>HU por Tipo de Solicitud</figcaption>
+          <div class="lienzo"><canvas id="g-tipo"></canvas></div>
+        </figure>
+        <figure class="tarjeta">
+          <figcaption>Tabla por estado</figcaption>
+          <div class="tabla-scroll"><table class="tabla" id="t-estado"></table></div>
+        </figure>
+      </div>
+    </section>
+
+    <!-- SEGUIMIENTO -->
+    <section class="panel" data-panel="seguimiento" hidden>
+      <p class="intro">HU abiertas (En flujo = Abierto). Cada HU se cuenta una sola vez; el módulo se asigna por palabra clave del Asunto (editable en Configuración).</p>
+      <div class="graficos">
+        <figure class="tarjeta ancho">
+          <figcaption>1. HU abiertas por Cliente y Tipo de Solicitud</figcaption>
+          <div class="lienzo lienzo-alto"><canvas id="g-seg-cliente"></canvas></div>
+          <div class="tabla-scroll"><table class="tabla" id="t-seg-cliente"></table></div>
+        </figure>
+        <figure class="tarjeta ancho">
+          <figcaption>2. HU abiertas por Sprint</figcaption>
+          <div class="lienzo"><canvas id="g-seg-sprint"></canvas></div>
+          <div class="tabla-scroll"><table class="tabla" id="t-seg-sprint"></table></div>
+        </figure>
+        <figure class="tarjeta ancho">
+          <figcaption>3. HU abiertas por Módulo</figcaption>
+          <div class="lienzo lienzo-alto"><canvas id="g-seg-modulo"></canvas></div>
+          <div class="tabla-scroll"><table class="tabla" id="t-seg-modulo"></table></div>
+        </figure>
+        <figure class="tarjeta ancho">
+          <figcaption>4. HU abiertas por Asignado a</figcaption>
+          <div class="lienzo"><canvas id="g-seg-asignado"></canvas></div>
+          <div class="tabla-scroll"><table class="tabla" id="t-seg-asignado"></table></div>
+        </figure>
+      </div>
+    </section>
+
+    <!-- DETALLE -->
+    <section class="panel" data-panel="detalle" hidden>
+      <div class="barra-detalle">
+        <input type="search" id="buscar" placeholder="Buscar por ID, asunto, cliente…" aria-label="Buscar">
+        <label class="check"><input type="checkbox" id="solo-consideradas" checked> Solo HU consideradas</label>
+        <label>En flujo
+          <select id="filtro-flujo"><option value="">Todos</option><option>Abierto</option><option>Cerrado</option></select>
+        </label>
+        <label>Fase
+          <select id="filtro-fase"><option value="">Todas</option><option>Análisis</option><option>Desarrollo</option><option>Pruebas</option><option>Cerrado</option><option>Excluido</option><option>Sin mapear</option></select>
+        </label>
+        <button class="btn" id="btn-exportar" type="button">Exportar CSV</button>
+      </div>
+      <p class="contador" id="contador-detalle"></p>
+      <div class="tabla-scroll tabla-detalle"><table class="tabla" id="t-detalle"></table></div>
+    </section>
+
+    <!-- FICHA -->
+    <section class="panel" data-panel="ficha" hidden>
+      <div class="tabla-scroll"><table class="tabla tabla-ficha" id="t-ficha"></table></div>
+    </section>
+
+    <!-- CONFIGURACIÓN -->
+    <section class="panel" data-panel="config" hidden>
+      <div class="config">
+        <div class="tarjeta">
+          <h3>Metas de los indicadores</h3>
+          <p class="nota">Se guardan en este navegador.</p>
+          <div id="cfg-metas"></div>
+        </div>
+        <div class="tarjeta">
+          <h3>Parámetros de cálculo</h3>
+          <p class="nota">Equivalen a las celdas de entrada de la hoja Datos Indicadores. Las marcas admiten comodines <code>*</code> y <code>?</code>, sin distinguir mayúsculas.</p>
+          <div id="cfg-parametros"></div>
+        </div>
+        <div class="tarjeta ancho">
+          <h3>Fase por estado</h3>
+          <p class="nota">Una regla por línea con el formato <code>Estado =&gt; Fase</code>. Fases válidas: Análisis, Desarrollo, Pruebas, Cerrado (En flujo = Cerrado) y Excluido. Los estados que no estén en esta tabla quedan fuera de las HU consideradas.</p>
+          <textarea id="cfg-estados" rows="10" spellcheck="false"></textarea>
+          <div class="zona-botones">
+            <button class="btn btn-primario" id="btn-guardar-estados" type="button">Aplicar tabla</button>
+          </div>
+        </div>
+        <div class="tarjeta ancho">
+          <h3>Tabla de módulos por palabra clave</h3>
+          <p class="nota">Una regla por línea con el formato <code>palabra clave =&gt; Módulo</code>. Se aplica la primera coincidencia de arriba hacia abajo (sin distinguir mayúsculas).</p>
+          <textarea id="cfg-palabras" rows="14" spellcheck="false"></textarea>
+          <div class="zona-botones">
+            <button class="btn btn-primario" id="btn-guardar-palabras" type="button">Aplicar tabla</button>
+            <button class="btn" id="btn-restaurar" type="button">Restaurar valores por defecto</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="js/indicadores.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
