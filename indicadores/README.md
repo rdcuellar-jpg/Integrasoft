@@ -60,8 +60,8 @@ la tabla de fase por estado y la tabla de palabras clave.
 
 ## Vistas
 
-- **Dashboard**: resumen de la base, tarjetas de KPI con meta y estado, HU por En flujo, fase, estado, mes de
-  finalización y Tipo de Solicitud.
+- **Resumen**: titular con cuántos indicadores están en meta, tabla de KPIs con barra frente a la meta,
+  distribución de HU por fase y estado, cierres por mes y HU por Tipo de Solicitud.
 - **Seguimiento HU abiertas**: HU abiertas por Cliente, Sprint, Módulo y Asignado a, cruzadas por Tipo de Solicitud.
 - **Detalle HU**: listado con búsqueda, filtros, orden por columna y exportación a CSV.
 - **Ficha de indicadores**: definición, fórmula, frecuencia, meta, responsable y resultado actual.
@@ -77,6 +77,7 @@ indicadores/
 ├── js/indicadores.js        # motor de cálculo (sin dependencias, usable en Node)
 ├── js/app.js                # interfaz y gráficos
 ├── js/vendor/               # Chart.js 4.4.1 (MIT) y SheetJS 0.18.5 (Apache-2.0), locales para uso sin internet
+├── fonts/                   # Schibsted Grotesk (SIL OFL 1.1), local para uso sin internet
 ├── data/hoja1-ejemplo.json  # copia de la Hoja1 actual para el botón "Datos de ejemplo"
 └── tests/                   # pruebas que comparan contra los valores del Excel
 ```

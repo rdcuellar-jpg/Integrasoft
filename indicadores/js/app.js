@@ -173,74 +173,134 @@
   function renderFuente() {
     var r = estado.resultado;
     var filtros = Object.keys(estado.filtros).filter(function (k) { return estado.filtros[k]; }).length;
-    $('#fuente-info').innerHTML = 'Fuente: <strong>' + esc(estado.fuente) + '</strong> · ' +
-      fmtNum.format(estado.filasLeidas) + ' filas leídas · ' + fmtNum.format(estado.registros.length) + ' HU únicas' +
-      (estado.cargado ? ' · cargado ' + estado.cargado.toLocaleString('es-CO') : '') +
-      (filtros ? ' · <strong>' + filtros + ' filtro(s) activo(s)</strong>' : '');
+    $('#fuente-info').innerHTML = 'Corte cargado desde <strong>' + esc(estado.fuente) + '</strong>' +
+      (estado.cargado ? ' el ' + esc(estado.cargado.toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })) : '') +
+      ', con ' + fmtNum.format(estado.filasLeidas) + ' filas y ' + fmtNum.format(estado.registros.length) + ' HU únicas.' +
+      (filtros ? ' Las cifras reflejan los filtros aplicados.' : '');
+    $('#filtros-activos').textContent = filtros ? String(filtros) : '';
     var no = Object.keys(r.estadosNoListados);
     $('#fuente-alertas').innerHTML = no.length
-      ? '<span class="alerta">Revisar: estados sin fase asignada (no se cuentan como HU consideradas; asígnelos en Configuración) → ' + esc(no.map(function (k) { return k + ' (' + r.estadosNoListados[k] + ')'; }).join(', ')) + '</span>'
+      ? '<span class="alerta">Hay estados sin fase asignada que no se cuentan como HU consideradas: ' + esc(no.map(function (k) { return k + ' (' + r.estadosNoListados[k] + ')'; }).join(', ')) + '. Asígnales una fase en Configuración.</span>'
       : '';
+  }
+
+  function listaNatural(items) {
+    if (items.length <= 1) return items.join('');
+    return items.slice(0, -1).join(', ') + ' y ' + items[items.length - 1];
   }
 
   function renderResumen() {
     var r = estado.resultado, b = r.base;
-    var datos = [['HU consideradas', b.consideradas, true], ['Total HU únicas en la base', b.total]]
-      .concat(b.excluidos.map(function (e) { return ['Excluidas: ' + e.estado, e.n]; }))
-      .concat(b.sinMapear ? [['Sin fase asignada', b.sinMapear]] : [])
-      .concat([['HU abiertas', r.porFlujo[0].n], ['HU cerradas', r.porFlujo[1].n], ['Horas ejecutadas', r.horas.ejecutadas, false, ' h']]);
-    $('#resumen').innerHTML = datos.map(function (d) {
-      return '<div class="dato' + (d[2] ? ' destacado' : '') + '"><div class="etq">' + esc(d[0]) + '</div><div class="val">' + fmtNum.format(d[1]) + (d[3] || '') + '</div></div>';
+    var plantilla = r.kpis.filter(function (k) { return k.grupo === 'plantilla'; });
+    var conDatos = plantilla.filter(function (k) { return k.resultado !== null; });
+    var enMeta = conDatos.filter(function (k) { return k.estado === 'EN META'; });
+    var fuera = conDatos.filter(function (k) { return k.estado === 'FUERA DE META'; });
+    var sinDatos = plantilla.filter(function (k) { return k.resultado === null; });
+
+    $('#veredicto').textContent = conDatos.length
+      ? enMeta.length + ' de ' + conDatos.length + ' indicadores con datos están en meta'
+      : 'Aún no hay indicadores con datos para este corte';
+    var partes = [];
+    if (fuera.length) {
+      partes.push('Fuera de meta: ' + listaNatural(fuera.map(function (k) { return k.nombre.replace(/^% /, '') + ' (' + pct(k.resultado) + ')'; })) + '.');
+    }
+    if (sinDatos.length) {
+      partes.push((sinDatos.length === 1 ? 'Falta el dato de ' : 'Faltan los datos de ') +
+        listaNatural(sinDatos.map(function (k) { return k.unidad === 'h' ? 'horas contratadas' : k.nombre.replace(/^% /, ''); })) + ', que se ingresa en Configuración.');
+    }
+    $('#veredicto-detalle').textContent = partes.join(' ');
+
+    var excl = b.excluidos.reduce(function (s, e) { return s + e.n; }, 0) + b.sinMapear;
+    var cifras = [
+      ['HU consideradas', fmtNum.format(b.consideradas), 'de ' + fmtNum.format(b.total) + ' únicas; ' + fmtNum.format(excl) + ' excluidas'],
+      ['HU abiertas', fmtNum.format(r.porFlujo[0].n), pct(r.porFlujo[0].pct, 0) + ' de las consideradas'],
+      ['HU cerradas', fmtNum.format(r.porFlujo[1].n), pct(r.porFlujo[1].pct, 0) + ' de las consideradas'],
+      ['Horas ejecutadas', fmtNum.format(r.horas.ejecutadas) + ' h', r.horas.contratadas ? 'de ' + fmtNum.format(r.horas.contratadas) + ' h contratadas' : 'sin horas contratadas']
+    ];
+    $('#cifras').innerHTML = cifras.map(function (c) {
+      return '<div title="' + esc(c[2]) + '"><dt>' + esc(c[0]) + '</dt><dd>' + esc(c[1]) + '</dd></div>';
     }).join('');
   }
 
   var ICONOS = {
-    'EN META': '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
-    'FUERA DE META': '<svg viewBox="0 0 24 24"><path d="M12 7v6m0 4h.01"/><circle cx="12" cy="12" r="9.5"/></svg>',
-    'SIN DATOS': '<svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>',
-    'SIN META': '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>'
+    'EN META': '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M8 12.5l2.7 2.7L16 9.8"/></svg>',
+    'FUERA DE META': '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v5.5m0 3.5h.01"/></svg>',
+    'SIN DATOS': '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5" stroke-dasharray="3 3"/></svg>',
+    'SIN META': '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/></svg>'
   };
+  var ETIQUETAS = { 'EN META': 'En meta', 'FUERA DE META': 'Fuera de meta', 'SIN DATOS': 'Sin datos', 'SIN META': 'Sin meta' };
   function pill(est) {
     var cls = est === 'EN META' ? 'en-meta' : est === 'FUERA DE META' ? 'fuera' : '';
-    return '<span class="estado ' + cls + '">' + ICONOS[est] + esc(est) + '</span>';
+    return '<span class="estado ' + cls + '">' + ICONOS[est] + esc(ETIQUETAS[est]) + '</span>';
   }
 
-  function textoMeta(k) {
-    if (k.meta === null || k.meta === undefined || k.meta === '') return 'Sin meta';
-    var base = 'Meta: ' + (k.tipoMeta === '<=' ? '≤ ' : '≥ ') + pct(k.meta, 0);
+  function tieneMeta(k) { return k.meta !== null && k.meta !== undefined && k.meta !== ''; }
+
+  function textoDetalle(k) {
     if (k.unidad === 'h') {
-      if (k.resultado === null) return base + ' — ' + fmtNum.format(k.numerador) + ' h ejecutadas; ingresar horas contratadas en Configuración';
-      return base + ' (' + fmtNum.format(k.numerador) + ' h de ' + fmtNum.format(k.denominador) + ' h)';
+      return k.resultado === null
+        ? fmtNum.format(k.numerador) + ' h ejecutadas; faltan las horas contratadas'
+        : fmtNum.format(k.numerador) + ' h de ' + fmtNum.format(k.denominador) + ' h';
     }
-    if (k.resultado === null) return base + ' — sin datos en la base';
-    return base + ' (' + fmtNum.format(k.numerador) + ' de ' + fmtNum.format(k.denominador) + ' HU)';
+    if (k.resultado === null) return 'Sin datos en la base';
+    return fmtNum.format(k.numerador) + ' de ' + fmtNum.format(k.denominador) + ' HU';
   }
 
-  function tarjetaKpi(k) {
-    var tieneMeta = k.meta !== null && k.meta !== undefined && k.meta !== '';
-    var medidor = '';
-    if (k.resultado !== null) {
-      medidor = '<div class="medidor" role="img" aria-label="' + esc(k.nombre + ' ' + pct(k.resultado)) + '">' +
-        '<div class="barra" style="width:' + Math.min(100, k.resultado * 100) + '%"></div>' +
-        (tieneMeta ? '<div class="meta" style="left:calc(' + Math.min(100, k.meta * 100) + '% - 1px)" title="Meta ' + pct(k.meta, 0) + '"></div>' : '') +
-        '</div>';
+  // Gráfico de bala: valor frente a la meta, con la zona fuera de meta rayada
+  function bala(k) {
+    var meta = tieneMeta(k) ? k.meta : null;
+    var escala = Math.max(1, k.resultado || 0, meta || 0);
+    var x = function (v) { return Math.min(100, v / escala * 100); };
+    var textoMetaCorto = meta === null ? '' : (k.tipoMeta === '<=' ? '≤ ' : '≥ ') + pct(meta, 0);
+    var zona = '';
+    if (meta !== null) {
+      zona = k.tipoMeta === '<='
+        ? '<span class="bala-zona" style="left:' + x(meta) + '%;right:0"></span>'
+        : '<span class="bala-zona" style="left:0;width:' + x(meta) + '%"></span>';
     }
-    var detalle = tieneMeta || k.grupo === 'plantilla'
-      ? textoMeta(k)
-      : fmtNum.format(k.numerador) + ' de ' + fmtNum.format(k.denominador) + ' HU';
-    return '<article class="kpi">' +
-      '<div class="nombre">' + esc(k.nombre) + '</div>' +
-      '<div class="valor' + (k.resultado === null ? ' nd' : '') + '">' + pct(k.resultado) + '</div>' +
-      medidor +
-      '<div class="detalle">' + esc(detalle) + '</div>' +
-      pill(k.estado) +
-      '</article>';
+    var etiqueta = k.nombre + ': ' + pct(k.resultado) + (meta !== null ? ', meta ' + textoMetaCorto : '');
+    return '<div class="bala' + (k.resultado === null ? ' vacia' : '') + '" role="img" aria-label="' + esc(etiqueta) + '">' +
+      '<span class="bala-pista">' + zona + '</span>' +
+      (k.resultado !== null ? '<span class="bala-valor" style="width:' + x(k.resultado) + '%"></span>' : '') +
+      (meta !== null ? '<span class="bala-meta' + (x(meta) > 88 ? ' al-final' : '') + '" style="left:' + x(meta) + '%"><span>' + esc(textoMetaCorto) + '</span></span>' : '') +
+      '</div>';
   }
 
   function renderKpis() {
-    var k = estado.resultado.kpis;
-    $('#kpis-plantilla').innerHTML = k.filter(function (x) { return x.grupo === 'plantilla'; }).map(tarjetaKpi).join('');
-    $('#kpis-flujo').innerHTML = k.filter(function (x) { return x.grupo === 'flujo'; }).map(tarjetaKpi).join('');
+    var k = estado.resultado.kpis.filter(function (x) { return x.grupo === 'plantilla'; });
+    $('#scorecard').innerHTML =
+      '<div class="sc-fila sc-cab" role="row"><span role="columnheader">Indicador</span><span role="columnheader" class="sc-valor-cab" style="text-align:right">Resultado</span>' +
+      '<span role="columnheader">Frente a la meta</span><span role="columnheader" class="sc-detalle">Base</span><span role="columnheader">Estado</span></div>' +
+      k.map(function (x) {
+        return '<div class="sc-fila" role="row">' +
+          '<div class="sc-nombre" role="cell"><strong>' + esc(x.nombre) + '</strong><small>' + esc(x.definicion) + '</small></div>' +
+          '<div class="sc-valor' + (x.resultado === null ? ' nd' : '') + '" role="cell">' + pct(x.resultado) + '</div>' +
+          '<div class="sc-bala" role="cell">' + bala(x) + '</div>' +
+          '<div class="sc-detalle" role="cell">' + esc(textoDetalle(x)) + '</div>' +
+          '<div class="sc-estado" role="cell">' + pill(x.estado) + '</div>' +
+          '</div>';
+      }).join('');
+  }
+
+  function renderPipeline() {
+    var r = estado.resultado, c = colores(), cf = colorFase(c);
+    var total = r.base.consideradas;
+    $('#flujo-resumen').textContent = fmtNum.format(r.porFlujo[0].n) + ' abiertas y ' + fmtNum.format(r.porFlujo[1].n) +
+      ' cerradas de ' + fmtNum.format(total) + ' HU consideradas';
+    $('#pipeline').innerHTML =
+      '<div class="pp-barra" role="img" aria-label="Distribución de HU por fase">' + r.porFase.map(function (f) {
+        return f.n ? '<span class="pp-seg" style="flex:' + f.n + ';background:' + cf[f.fase] + '" title="' + esc(f.fase + ': ' + f.n + ' HU') + '"></span>' : '';
+      }).join('') + '</div>' +
+      '<div class="pp-cols">' + r.porFase.map(function (f) {
+        var estados = r.porEstado.filter(function (e) { return e.fase === f.fase; });
+        return '<div class="pp-col">' +
+          '<div class="pp-fase"><i style="background:' + cf[f.fase] + '"></i>' + esc(f.fase) + '</div>' +
+          '<div class="pp-num">' + fmtNum.format(f.n) + '<small>' + pct(f.pct) + '</small></div>' +
+          '<div class="pp-flujo">' + (f.fase === 'Cerrado' ? 'En flujo cerrado' : 'En flujo abierto') + '</div>' +
+          '<ul class="pp-estados">' + estados.map(function (e) {
+            return '<li class="' + (e.n ? '' : 'cero') + '"><span>' + esc(e.estado) + '</span><b>' + e.n + '</b></li>';
+          }).join('') + '</ul></div>';
+      }).join('') + '</div>';
   }
 
   // ---------- gráficos ----------
@@ -255,7 +315,7 @@
     };
   }
   function colorFase(c) {
-    return { 'Análisis': c.s[0], 'Desarrollo': c.s[1], 'Pruebas': c.s[2], 'Cerrado': c.s[3] };
+    return { 'Análisis': cssVar('--fase-1'), 'Desarrollo': cssVar('--fase-2'), 'Pruebas': cssVar('--fase-3'), 'Cerrado': cssVar('--fase-4') };
   }
   function colorTipo(c) {
     return { 'Desarrollo Contratado': c.s[0], 'Mejora Funcional': c.s[1], 'Deuda Tecnica': c.s[2], 'Sin clasificar': c.muted };
@@ -337,98 +397,29 @@
   }
 
   function renderDistribucion() {
+    renderPipeline();
     if (typeof Chart === 'undefined') return;
     configurarChart();
-    var r = estado.resultado, c = colores();
-    var total = r.porFlujo[0].n + r.porFlujo[1].n;
+    var r = estado.resultado, c = colores(), cf = colorFase(c);
 
-    grafico('g-flujo', {
-      type: 'doughnut',
-      data: {
-        labels: r.porFlujo.map(function (f) { return f.nombre; }),
-        datasets: [{ data: r.porFlujo.map(function (f) { return f.n; }), backgroundColor: [c.s[0], c.s[3]], borderColor: c.superficie, borderWidth: 2, hoverOffset: 4 }]
-      },
-      options: {
-        cutout: '72%',
-        plugins: {
-          legend: { position: 'bottom', labels: { generateLabels: function (ch) {
-            var base = Chart.overrides.doughnut.plugins.legend.labels.generateLabels(ch);
-            base.forEach(function (l, i) { l.text = r.porFlujo[i].nombre + ' · ' + r.porFlujo[i].n + ' (' + pct(r.porFlujo[i].pct) + ')'; });
-            return base;
-          } } },
-          tooltip: { callbacks: { label: function (it) { return ' ' + it.label + ': ' + it.raw + ' HU (' + pct(total ? it.raw / total : 0) + ')'; } } }
-        }
-      },
-      plugins: [{
-        id: 'centro',
-        afterDraw: function (ch) {
-          var a = ch.chartArea; if (!a) return;
-          var ctx = ch.ctx; ctx.save();
-          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.fillStyle = c.textoFuerte; ctx.font = '650 26px ' + Chart.defaults.font.family;
-          ctx.fillText(fmtNum.format(total), (a.left + a.right) / 2, (a.top + a.bottom) / 2 - 8);
-          ctx.fillStyle = c.texto; ctx.font = '12px ' + Chart.defaults.font.family;
-          ctx.fillText('HU', (a.left + a.right) / 2, (a.top + a.bottom) / 2 + 14);
-          ctx.restore();
-        }
-      }]
-    });
-
-    var cf = colorFase(c);
-    grafico('g-fase', {
-      type: 'bar',
-      data: {
-        labels: r.porFase.map(function (f) { return f.fase; }),
-        datasets: [barra(c, r.porFase.map(function (f) { return cf[f.fase]; }), { label: 'HU', data: r.porFase.map(function (f) { return f.n; }) })]
-      },
-      options: {
-        scales: ejeValores(c), layout: { padding: { top: 18 } },
-        plugins: {
-          legend: { display: false },
-          etiquetasTotales: { activo: true, formato: function (v, i) { return v + ' · ' + pct(r.porFase[i].pct); } },
-          tooltip: { callbacks: { label: function (it) { return ' ' + it.raw + ' HU (' + pct(r.porFase[it.dataIndex].pct) + ')'; } } }
-        }
-      },
-      plugins: [etiquetasTotales]
-    });
-
-    // Por estado: un dataset por fase para tener leyenda y color por entidad
-    document.getElementById('g-estado').parentNode.style.height = Math.max(220, r.porEstado.length * 30 + 70) + 'px';
-    grafico('g-estado', {
-      type: 'bar',
-      data: {
-        labels: r.porEstado.map(function (e) { return e.estado; }),
-        datasets: I.FASES.map(function (f) {
-          return barra(c, cf[f], { label: f, data: r.porEstado.map(function (e) { return e.fase === f ? e.n : null; }), grouped: false, categoryPercentage: 0.8 });
-        })
-      },
-      options: {
-        indexAxis: 'y', scales: ejeValores(c, true), layout: { padding: { right: 56 } },
-        plugins: {
-          legend: { position: 'top', align: 'start' },
-          etiquetasTotales: { activo: true, formato: function (v, i) { return v + ' · ' + pct(r.porEstado[i].pct); } },
-          tooltip: { filter: function (it) { return it.raw !== null; }, callbacks: { label: function (it) { return ' ' + it.dataset.label + ': ' + it.raw + ' HU (' + pct(r.porEstado[it.dataIndex].pct) + ')'; } } }
-        }
-      },
-      plugins: [etiquetasTotales]
-    });
-
+    // Cerradas con el tono de la fase Cerrado; abiertas planificadas con un tono de fase abierta
     grafico('g-mensual', {
       type: 'bar',
       data: {
-        labels: r.mensual.map(function (m) { return nombreMes(m.mes); }),
+        labels: r.mensual.map(function (m) { return r.anio ? MESES[+m.mes.split('-')[1] - 1] : nombreMes(m.mes); }),
         datasets: [
-          barra(c, c.s[0], { label: 'HU cerradas', data: r.mensual.map(function (m) { return m.cerradas; }) }),
-          barra(c, c.s[1], { label: 'HU abiertas con fin planificado', data: r.mensual.map(function (m) { return m.abiertas; }) })
+          barra(c, cf['Cerrado'], { label: 'HU cerradas', data: r.mensual.map(function (m) { return m.cerradas; }) }),
+          barra(c, cf['Análisis'], { label: 'HU abiertas con fin planificado', data: r.mensual.map(function (m) { return m.abiertas; }) })
         ]
       },
       options: {
-        scales: ejeValores(c), interaction: { mode: 'index', intersect: false },
+        scales: Object.assign(ejeValores(c), { x: { grid: { display: false }, border: { color: c.grid }, ticks: { maxRotation: 0, autoSkipPadding: 8 } } }),
+        interaction: { mode: 'index', intersect: false },
         plugins: { legend: { position: 'top', align: 'start' } }
       }
     });
-    $('#nota-mensual').textContent = 'Nota: ' + r.sinFecha.cerradas + ' HU cerradas y ' + r.sinFecha.abiertas +
-      ' abierta(s) no tienen fecha de finalización' + (r.anio ? ' en ' + r.anio : '') + ' y no aparecen en el gráfico mensual.';
+    $('#nota-mensual').textContent = r.sinFecha.cerradas + ' HU cerradas y ' + r.sinFecha.abiertas +
+      ' abiertas no tienen fecha de finalización' + (r.anio ? ' en ' + r.anio : '') + ', por eso no aparecen en el gráfico.';
     var anios = r.anios.slice();
     if (r.anio && anios.indexOf(r.anio) === -1) anios.push(r.anio);
     anios.sort();
@@ -444,23 +435,15 @@
         datasets: [barra(c, r.porTipo.map(function (t) { return ct[t.nombre]; }), { label: 'HU', data: r.porTipo.map(function (t) { return t.n; }) })]
       },
       options: {
-        indexAxis: 'y', scales: ejeValores(c, true), layout: { padding: { right: 70 } },
+        indexAxis: 'y', scales: ejeValores(c, true), layout: { padding: { right: 78 } },
         plugins: {
           legend: { display: false },
-          etiquetasTotales: { activo: true, formato: function (v, i) { return v + ' · ' + pct(r.porTipo[i].pct); } },
+          etiquetasTotales: { activo: true, formato: function (v, i) { return v + ' (' + pct(r.porTipo[i].pct) + ')'; } },
           tooltip: { callbacks: { label: function (it) { return ' ' + it.raw + ' HU (' + pct(r.porTipo[it.dataIndex].pct) + ')'; } } }
         }
       },
       plugins: [etiquetasTotales]
     });
-
-    // Tabla por estado
-    $('#t-estado').innerHTML = '<thead><tr><th>Estado</th><th>Fase</th><th class="num">N° HU</th><th class="num">%</th></tr></thead><tbody>' +
-      r.porEstado.map(function (e) {
-        return '<tr><td>' + esc(e.estado) + '</td><td><span class="punto" style="background:' + cf[e.fase] + '"></span>' + esc(e.fase) +
-          '</td><td class="num">' + e.n + '</td><td class="num">' + pct(e.pct) + '</td></tr>';
-      }).join('') +
-      '<tr class="total"><td colspan="2">Total</td><td class="num">' + r.base.consideradas + '</td><td class="num">' + pct(r.base.consideradas ? 1 : 0) + '</td></tr></tbody>';
   }
 
   function tablaCruzada(id, filas, totalAbiertas, etiqueta) {
@@ -762,6 +745,9 @@
   }
 
   function iniciar() {
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(function () { if (estado.resultado) { renderDistribucion(); renderSeguimiento(); } });
+    }
     var tema = leer('tema', null);
     if (tema) document.documentElement.setAttribute('data-theme', tema);
     enlazar();
