@@ -35,7 +35,7 @@
     ['Asignación', EXCLUIDO]
   ];
   var FASES = ['Análisis', 'Desarrollo', 'Pruebas', 'Cerrado'];
-  var TIPOS_SOLICITUD = ['Desarrollo Contratado', 'Mejora Funcional', 'Deuda Tecnica', 'Sin clasificar'];
+  var TIPOS_SOLICITUD = ['Desarrollo Contratado', 'Mejora Funcional', 'Deuda Tecnica', 'Garantía', 'Sin clasificar'];
   var SIN_MODULO = 'Sin módulo identificado';
   var SIN_SPRINT = 'Sin sprint';
   var SIN_CLIENTE = 'Sin cliente';
@@ -85,7 +85,7 @@
     { id: 'refinement', nombre: 'Precisión backlog refinement', meta: 0.85, tipoMeta: '>=', grupo: 'plantilla',
       definicion: 'Historias en sprint que no tienen marca de retrabajo/cambio de alcance en la columna Precisión HU.',
       formula: '(N° de historias sin retrabajo / N° total de historias refinadas) x 100', frecuencia: 'Mensual',
-      responsable: 'Product Owner', criterio: 'HU consideradas con sprint asignado y sin marca en Precisión HU / total HU consideradas con sprint' },
+      responsable: 'Product Owner', criterio: 'HU consideradas sin marca en Precisión HU / total HU consideradas (excluye solo Nuevo / Identificado y Asignación)' },
     { id: 'alcance', nombre: '% Cambios de alcance post-firma', meta: 0.10, tipoMeta: '<=', grupo: 'plantilla',
       definicion: 'Requerimientos modificados después de su aprobación formal.',
       formula: '(N° de requerimientos con cambio post-firma / N° total firmados) x 100', frecuencia: 'Mensual',
@@ -247,7 +247,6 @@
         fila: r + 1
       };
       registro.modulo = asignarModulo(registro.asunto, palabras);
-      registro.enSprint = considerada && registro.sprint !== SIN_SPRINT;
       registros.push(registro);
     }
     var columnas = {};
@@ -349,13 +348,12 @@
       { nombre: 'Cerrado', n: cerradas, pct: nC ? cerradas / nC : 0 }
     ];
 
-    var porTipo = ['Mejora Funcional', 'Deuda Tecnica', 'Desarrollo Contratado', SIN_CLASIFICAR].map(function (t) {
+    var porTipo = ['Mejora Funcional', 'Deuda Tecnica', 'Desarrollo Contratado', 'Garantía', SIN_CLASIFICAR].map(function (t) {
       var n = contar(consideradas, function (h) { return tipoNormalizado(h) === t; });
       return { nombre: t, n: n, pct: nC ? n / nC : 0 };
     });
 
     var sinExcluido = consideradas.filter(function (h) { return !coincideCriterio(h.tipoSolicitud, par.tipoExcluidoBacklog) || !texto(par.tipoExcluidoBacklog); });
-    var enSprint = consideradas.filter(function (h) { return h.enSprint; });
     var horas = consideradas.reduce(function (s, h) { return s + h.trabajoTotal; }, 0);
     var horasContratadas = par.horasContratadas === '' || par.horasContratadas === null || par.horasContratadas === undefined
       ? null : Number(par.horasContratadas);
@@ -364,7 +362,7 @@
       deuda: [contar(consideradas, function (h) { return h.tipoSolicitud === 'Deuda Tecnica'; }), nC],
       backlog: [contar(sinExcluido, function (h) { return h.enFlujo === 'Cerrado'; }), sinExcluido.length],
       horas: [horas, horasContratadas],
-      refinement: [contar(enSprint, function (h) { return h.precision === ''; }), enSprint.length],
+      refinement: [contar(consideradas, function (h) { return h.precision === ''; }), nC],
       alcance: [contar(consideradas, function (h) { return coincideCriterio(h.precision, par.marcaAlcance); }), nC],
       ambiguedad: [contar(consideradas, function (h) { return coincideCriterio(h.precision, par.marcaRetrabajo); }), nC],
       analisis: [fase['Análisis'], nC],

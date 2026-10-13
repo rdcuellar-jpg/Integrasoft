@@ -38,6 +38,7 @@ Si la hoja trae además `Responsable`, se habilita su filtro y su columna en el 
   *Desarrollo* (En desarrollo, Revisión (IDS)), *Pruebas* (Pruebas funcionales y Documentación),
   *Cerrado* (Entrega a Operaciones, Entrega, CIERRE en Desarrollo o Solución, Cierre, Garantía HU) y
   *Excluido* (Nuevo / Identificado, Asignación).
+- Tipos de Solicitud: Mejora Funcional, Deuda Tecnica, Desarrollo Contratado, Garantía y Sin clasificar (vacío).
 - **En flujo** se deriva de la fase: *Cerrado* si la fase es Cerrado, *Abierto* en otro caso.
 - **HU consideradas** = HU únicas cuya fase no es Excluido. Un estado que no esté en la tabla queda fuera y la app lo advierte.
 - KPIs:
@@ -46,7 +47,7 @@ Si la hoja trae además `Responsable`, se habilita su filtro y su columna en el 
   | % Deuda técnica / backlog total | HU con Tipo de Solicitud = Deuda Tecnica / HU consideradas | ≤ 20% |
   | % Cumplimiento del Backlog | HU cerradas / HU consideradas, ambas sin Deuda Tecnica | ≥ 90% |
   | Control de consumo de horas de desarrollo | Σ Trabajo total de las HU consideradas / horas contratadas (parámetro) | ≤ 100% |
-  | Precisión backlog refinement | HU consideradas con sprint y sin marca en Precisión HU / HU consideradas con sprint | ≥ 85% |
+  | Precisión backlog refinement | HU consideradas sin marca en Precisión HU / HU consideradas | ≥ 85% |
   | % Cambios de alcance post-firma | HU con Precisión HU = "Cambio de Alcance" / HU consideradas | ≤ 10% |
   | % Retrabajo por ambigüedad | HU con Precisión HU = "Retrabajo*" / HU consideradas | ≤ 8% |
   | % HU en Análisis / Desarrollo / Pruebas | HU en la fase / HU consideradas | sin meta |
@@ -91,6 +92,6 @@ indicadores/
 node --test indicadores/tests/*.test.js
 ```
 
-Las pruebas verifican con la Hoja1 de ejemplo los mismos resultados del libro: 173 HU únicas, 151 consideradas,
-deuda técnica 30,5 %, cumplimiento del backlog 74,3 %, 267 horas ejecutadas, precisión del refinement 95,2 %,
-distribución por estado/fase/mes y las tablas de seguimiento.
+Las pruebas verifican con la Hoja1 de ejemplo los mismos resultados del libro: 168 HU únicas, 122 consideradas,
+deuda técnica 14,8 %, cumplimiento del backlog 76,0 %, 271 horas ejecutadas, precisión del refinement 94,3 %,
+cambios de alcance 2,5 %, retrabajo 3,3 %, distribución por estado/fase/mes y las tablas de seguimiento.
