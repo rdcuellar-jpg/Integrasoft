@@ -17,7 +17,7 @@
         <span class="marca-area">Excelencia Operativa</span>
       </div>
       <nav class="tabs" role="tablist" aria-label="Secciones">
-        <button role="tab" data-tab="dashboard" aria-selected="true">Resumen</button>
+        <button role="tab" data-tab="dashboard" aria-selected="true">Indicadores Dirección de Soluciones</button>
         <button role="tab" data-tab="seguimiento" aria-selected="false">HU abiertas</button>
         <button role="tab" data-tab="detalle" aria-selected="false">Detalle de HU</button>
         <button role="tab" data-tab="ficha" aria-selected="false">Ficha de indicadores</button>
@@ -77,8 +77,19 @@
           </div>
 
           <section class="bloque" aria-labelledby="t-plantilla">
-            <h2 id="t-plantilla">Indicadores de la plantilla</h2>
+            <div class="bloque-cab">
+              <h2 id="t-plantilla">Indicadores de la plantilla</h2>
+              <div class="segmentos" role="radiogroup" aria-label="Forma de ver los indicadores">
+                <button type="button" role="radio" data-vista="tabla" aria-checked="true">Tabla con meta</button>
+                <button type="button" role="radio" data-vista="distancia" aria-checked="false">Distancia a la meta</button>
+                <button type="button" role="radio" data-vista="estado" aria-checked="false">Por estado</button>
+                <button type="button" role="radio" data-vista="cliente" aria-checked="false">Por cliente</button>
+              </div>
+            </div>
             <div class="scorecard" id="scorecard" role="table" aria-label="Indicadores de la plantilla frente a su meta"></div>
+            <div class="vista-kpi" id="vista-distancia" hidden></div>
+            <div class="vista-kpi" id="vista-estado" hidden></div>
+            <div class="vista-kpi" id="vista-cliente" hidden></div>
           </section>
 
           <section class="bloque" aria-labelledby="t-flujo">
