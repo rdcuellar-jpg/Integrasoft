@@ -60,8 +60,11 @@ la tabla de fase por estado y la tabla de palabras clave.
 
 ## Vistas
 
-- **Resumen**: titular con cuántos indicadores están en meta, tabla de KPIs con barra frente a la meta,
-  distribución de HU por fase y estado, cierres por mes y HU por Tipo de Solicitud.
+- **Indicadores Dirección de Soluciones** (vista principal): titular con cuántos indicadores están en meta,
+  indicadores de la plantilla, distribución de HU por fase y estado, cierres por mes y HU por Tipo de Solicitud.
+  Los indicadores se pueden ver de cuatro formas: *Tabla con meta* (barra frente a la meta), *Distancia a la meta*
+  (puntos por encima o por debajo), *Por estado* (requieren atención, en meta, sin datos) y *Por cliente*
+  (matriz de indicadores calculados con las HU de cada cliente).
 - **Seguimiento HU abiertas**: HU abiertas por Cliente, Sprint, Módulo y Asignado a, cruzadas por Tipo de Solicitud.
 - **Detalle HU**: listado con búsqueda, filtros, orden por columna y exportación a CSV.
 - **Ficha de indicadores**: definición, fórmula, frecuencia, meta, responsable y resultado actual.

@@ -12,6 +12,7 @@
     filtros: {},
     resultado: null,
     graficos: {},
+    vistaKpi: leer('vistaKpi', 'tabla'),
     orden: { campo: 'id', asc: true },
     config: {
       metas: leer('metas', {}),
@@ -266,8 +267,104 @@
       '</div>';
   }
 
+  // ---------- vistas de los indicadores de la plantilla ----------
+  var VISTAS = ['tabla', 'distancia', 'estado', 'cliente'];
+
   function renderKpis() {
-    var k = estado.resultado.kpis.filter(function (x) { return x.grupo === 'plantilla'; });
+    var vista = VISTAS.indexOf(estado.vistaKpi) === -1 ? 'tabla' : estado.vistaKpi;
+    $$('[data-vista]').forEach(function (b) { b.setAttribute('aria-checked', String(b.getAttribute('data-vista') === vista)); });
+    $('#scorecard').hidden = vista !== 'tabla';
+    ['distancia', 'estado', 'cliente'].forEach(function (v) { $('#vista-' + v).hidden = v !== vista; });
+    ({ tabla: renderTabla, distancia: renderDistancia, estado: renderPorEstado, cliente: renderPorCliente })[vista]();
+  }
+
+  function plantilla(resultado) {
+    return (resultado || estado.resultado).kpis.filter(function (x) { return x.grupo === 'plantilla'; });
+  }
+
+  // Desviación frente a la meta en puntos porcentuales; positiva = favorable
+  function desviacion(k) {
+    if (k.resultado === null || !tieneMeta(k)) return null;
+    var d = (k.resultado - k.meta) * 100;
+    return k.tipoMeta === '<=' ? -d : d;
+  }
+  var fmtPp = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  function fraseDesviacion(k) {
+    var d = desviacion(k);
+    if (d === null) return k.unidad === 'h' ? 'Falta ingresar las horas contratadas.' : 'Sin datos en la base.';
+    var pp = fmtPp.format(Math.abs(d)) + ' puntos';
+    var meta = pct(k.meta, 0);
+    if (k.tipoMeta === '<=') return d >= 0 ? pp + ' por debajo del máximo de ' + meta + '.' : pp + ' por encima del máximo de ' + meta + '.';
+    return d >= 0 ? pp + ' por encima del mínimo de ' + meta + '.' : pp + ' por debajo del mínimo de ' + meta + '.';
+  }
+
+  function renderDistancia() {
+    var k = plantilla();
+    var con = k.filter(function (x) { return desviacion(x) !== null; });
+    var sin = k.filter(function (x) { return desviacion(x) === null; });
+    var escala = Math.max(10, Math.max.apply(null, con.map(function (x) { return Math.abs(desviacion(x)); }).concat([0])));
+    $('#vista-distancia').innerHTML =
+      '<div class="dist-ejes"><span>Peor que la meta</span><span>Meta</span><span>Mejor que la meta</span></div>' +
+      con.sort(function (a, b) { return desviacion(a) - desviacion(b); }).map(function (x) {
+        var d = desviacion(x), ancho = Math.abs(d) / escala * 34;
+        var cls = d >= 0 ? 'favor' : 'contra';
+        return '<div class="dist-fila">' +
+          '<div class="dist-nombre"><strong>' + esc(x.nombre) + '</strong><small>' + pct(x.resultado) + ' frente a ' + (x.tipoMeta === '<=' ? '≤ ' : '≥ ') + pct(x.meta, 0) + '</small></div>' +
+          '<div class="dist-pista" role="img" aria-label="' + esc(x.nombre + ': ' + fraseDesviacion(x)) + '">' +
+            '<span class="dist-barra ' + cls + '" style="' + (d >= 0 ? 'left:50%' : 'right:50%') + ';width:' + ancho + '%"></span>' +
+            '<span class="dist-valor ' + cls + '" style="' + (d >= 0 ? 'left:calc(50% + ' + ancho + '% + 8px)' : 'right:calc(50% + ' + ancho + '% + 8px)') + '">' + (d >= 0 ? '+' : '−') + fmtPp.format(Math.abs(d)) + ' pp</span>' +
+          '</div>' +
+          '<div class="dist-estado">' + pill(x.estado) + '</div>' +
+          '</div>';
+      }).join('') +
+      (sin.length ? '<p class="nota">Sin datos para comparar: ' + esc(listaNatural(sin.map(function (x) { return x.nombre + (x.unidad === 'h' ? ' (faltan las horas contratadas)' : ''); }))) + '.</p>' : '') +
+      '<p class="nota">pp = puntos porcentuales de diferencia entre el resultado y la meta.</p>';
+  }
+
+  function renderPorEstado() {
+    var k = plantilla();
+    var grupos = [
+      ['Requieren atención', 'fuera', k.filter(function (x) { return x.estado === 'FUERA DE META'; })],
+      ['En meta', 'en-meta', k.filter(function (x) { return x.estado === 'EN META'; })],
+      ['Sin datos', '', k.filter(function (x) { return x.estado === 'SIN DATOS' || x.estado === 'SIN META'; })]
+    ];
+    $('#vista-estado').innerHTML = '<div class="grupos">' + grupos.map(function (g) {
+      return '<section class="grupo ' + g[1] + '"><h3>' + ICONOS[g[1] === 'fuera' ? 'FUERA DE META' : g[1] === 'en-meta' ? 'EN META' : 'SIN DATOS'] + esc(g[0]) + ' <span>' + g[2].length + '</span></h3>' +
+        (g[2].length ? '<ul>' + g[2].map(function (x) {
+          return '<li><div class="g-linea"><span>' + esc(x.nombre) + '</span><b>' + pct(x.resultado) + '</b></div>' +
+            '<p>' + esc(fraseDesviacion(x)) + (x.resultado !== null ? ' Base: ' + esc(textoDetalle(x)) + '.' : '') + '</p></li>';
+        }).join('') + '</ul>' : '<p class="g-vacio">Ningún indicador en este grupo.</p>') + '</section>';
+    }).join('') + '</div>';
+  }
+
+  function renderPorCliente() {
+    var ids = ['deuda', 'backlog', 'refinement', 'alcance', 'ambiguedad'];
+    var cortos = { deuda: 'Deuda técnica', backlog: 'Cumplimiento backlog', refinement: 'Precisión refinement', alcance: 'Cambios de alcance', ambiguedad: 'Retrabajo' };
+    var porCliente = {};
+    estado.filtrados.forEach(function (r) { (porCliente[r.cliente] = porCliente[r.cliente] || []).push(r); });
+    var filas = Object.keys(porCliente).map(function (c) {
+      var res = I.calcular(porCliente[c], estado.config);
+      return { cliente: c, n: res.base.consideradas, kpis: res.kpis };
+    }).filter(function (f) { return f.n > 0; }).sort(function (a, b) { return b.n - a.n; });
+    var celda = function (k) {
+      var cls = k.estado === 'EN META' ? 'en-meta' : k.estado === 'FUERA DE META' ? 'fuera' : 'nd';
+      return '<td class="mc ' + cls + '" title="' + esc(k.nombre + ': ' + textoDetalle(k)) + '">' +
+        (k.resultado === null ? '<span class="mc-nd">sin datos</span>' : ICONOS[k.estado] + pct(k.resultado)) + '</td>';
+    };
+    var total = plantilla();
+    $('#vista-cliente').innerHTML = '<div class="tabla-scroll"><table class="tabla matriz"><thead><tr><th>Cliente</th><th class="num">HU</th>' +
+      ids.map(function (id) { var k = total.find(function (x) { return x.id === id; }); return '<th>' + esc(cortos[id]) + '<small>' + (k.tipoMeta === '<=' ? '≤ ' : '≥ ') + pct(k.meta, 0) + '</small></th>'; }).join('') +
+      '</tr></thead><tbody>' + filas.map(function (f) {
+        return '<tr><td>' + esc(f.cliente) + '</td><td class="num">' + f.n + '</td>' +
+          ids.map(function (id) { return celda(f.kpis.find(function (x) { return x.id === id; })); }).join('') + '</tr>';
+      }).join('') +
+      '<tr class="total"><td>Total</td><td class="num">' + estado.resultado.base.consideradas + '</td>' +
+      ids.map(function (id) { return celda(total.find(function (x) { return x.id === id; })); }).join('') + '</tr></tbody></table></div>' +
+      '<p class="nota">Cada celda calcula el indicador solo con las HU de ese cliente. El control de horas no se desglosa porque las horas contratadas son globales.</p>';
+  }
+
+  function renderTabla() {
+    var k = plantilla();
     $('#scorecard').innerHTML =
       '<div class="sc-fila sc-cab" role="row"><span role="columnheader">Indicador</span><span role="columnheader" class="sc-valor-cab" style="text-align:right">Resultado</span>' +
       '<span role="columnheader">Frente a la meta</span><span role="columnheader" class="sc-detalle">Base</span><span role="columnheader">Estado</span></div>' +
@@ -694,6 +791,13 @@
         if (sel.value) estado.filtros[campo] = sel.value; else delete estado.filtros[campo];
         sel.classList.toggle('activo', !!sel.value);
         actualizar();
+      });
+    });
+    $$('[data-vista]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        estado.vistaKpi = b.getAttribute('data-vista');
+        guardar('vistaKpi', estado.vistaKpi);
+        renderKpis();
       });
     });
     $('#btn-limpiar').addEventListener('click', function () { estado.filtros = {}; construirFiltros(); actualizar(); });
