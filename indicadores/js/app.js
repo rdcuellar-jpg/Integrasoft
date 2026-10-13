@@ -415,7 +415,7 @@
     return { 'Análisis': cssVar('--fase-1'), 'Desarrollo': cssVar('--fase-2'), 'Pruebas': cssVar('--fase-3'), 'Cerrado': cssVar('--fase-4') };
   }
   function colorTipo(c) {
-    return { 'Desarrollo Contratado': c.s[0], 'Mejora Funcional': c.s[1], 'Deuda Tecnica': c.s[2], 'Sin clasificar': c.muted };
+    return { 'Desarrollo Contratado': c.s[0], 'Mejora Funcional': c.s[1], 'Deuda Tecnica': c.s[2], 'Garantía': c.s[6], 'Sin clasificar': c.muted };
   }
 
   function configurarChart() {
@@ -552,7 +552,7 @@
       (filas.length ? filas.map(function (f) {
         return '<tr><td>' + esc(f.nombre || '(vacío)') + '</td>' + tipos.map(function (t) { return '<td class="num">' + f[t] + '</td>'; }).join('') +
           '<td class="num"><strong>' + f.total + '</strong></td><td class="num">' + pct(f.pct) + '</td></tr>';
-      }).join('') : '<tr><td colspan="7">Sin HU abiertas para los filtros seleccionados.</td></tr>') +
+      }).join('') : '<tr><td colspan="' + (tipos.length + 3) + '">Sin HU abiertas para los filtros seleccionados.</td></tr>') +
       '<tr class="total"><td>Total</td>' + tipos.map(function (t) { return '<td class="num">' + tot[t] + '</td>'; }).join('') +
       '<td class="num">' + tot.total + '</td><td class="num">' + pct(totalAbiertas ? tot.total / totalAbiertas : 0) + '</td></tr></tbody>';
   }
