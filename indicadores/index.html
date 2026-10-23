@@ -52,9 +52,10 @@
       <main id="app" hidden>
         <header class="corte">
           <div class="corte-info">
-            <label class="sel-informe">Informe
-              <select id="sel-informe" aria-label="Informe que se está viendo"></select>
-            </label>
+            <div class="sel-informe">
+              <label>Informe <select id="sel-informe" aria-label="Informe que se está viendo"></select></label>
+              <button class="btn btn-comparar" id="btn-ir-comparar" type="button">Comparar informes <span id="n-informes"></span></button>
+            </div>
             <p class="fuente" aria-live="polite"><span id="fuente-info"></span> <span id="fuente-alertas"></span></p>
             <p class="aviso-corte" id="aviso-corte" hidden>
               Estás viendo un corte anterior. <button class="btn-texto" id="btn-ultimo" type="button">Ver el más reciente</button>

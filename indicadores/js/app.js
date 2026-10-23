@@ -182,7 +182,9 @@
       };
       return Historico.guardar(inf).then(function () { return refrescarInformes(); }).then(function () {
         mostrarInforme(inf);
-        toast('Informe guardado con fecha de corte ' + fechaCorte(inf.corte) + '. Puedes cambiarla en Comparativo de informes.');
+        toast(estado.informes.length > 1
+          ? 'Informe guardado con fecha de corte ' + fechaCorte(inf.corte) + '. Ya puedes compararlo con los anteriores en Comparativo de informes.'
+          : 'Informe guardado con fecha de corte ' + fechaCorte(inf.corte) + '. Carga el Excel de otra fecha para poder comparar.');
       });
     }).catch(function (err) { toast('No se pudo guardar el informe: ' + err.message); });
   }
@@ -198,7 +200,7 @@
     sel.innerHTML = estado.informes.map(function (i) {
       return '<option value="' + esc(i.id) + '"' + (i.id === estado.informeId ? ' selected' : '') + '>' + esc(etiquetaInforme(i)) + '</option>';
     }).join('');
-    sel.parentNode.hidden = estado.informes.length < 2;
+    $('#n-informes').textContent = '(' + estado.informes.length + ' guardado' + (estado.informes.length === 1 ? '' : 's') + ')';
     $('#aviso-corte').hidden = !(estado.informes.length && estado.informeId && estado.informes[0].id !== estado.informeId);
   }
 
@@ -1196,6 +1198,7 @@
       var inf = estado.informes.find(function (i) { return i.id === e.target.value; });
       if (inf) mostrarInforme(inf);
     });
+    $('#btn-ir-comparar').addEventListener('click', function () { $('.tabs [data-tab="comparativo"]').click(); window.scrollTo(0, 0); });
     $('#btn-ultimo').addEventListener('click', function () { if (estado.informes[0]) mostrarInforme(estado.informes[0]); });
     $('#comp-a').addEventListener('change', function (e) { estado.comp.a = e.target.value; renderComparativo(); });
     $('#comp-b').addEventListener('change', function (e) { estado.comp.b = e.target.value; renderComparativo(); });
