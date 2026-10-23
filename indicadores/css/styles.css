@@ -313,6 +313,49 @@ select.activo { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--a
   .grupo { padding: 0; border-left: 0; }
 }
 
+/* ---------- Informe en pantalla ---------- */
+.corte-info { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sel-informe { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-secondary); font-weight: 550; }
+.sel-informe select { width: auto; max-width: min(420px, 70vw); font-weight: 600; color: var(--text-primary); }
+.corte-info .fuente { padding-top: 0; }
+.aviso-corte { font-size: 13px; color: var(--text-primary); background: var(--accent-soft); border-radius: 6px; padding: 6px 10px; width: fit-content; }
+.aviso-corte .btn-texto { font: inherit; font-weight: 600; cursor: pointer; border: 0; background: none; color: var(--accent); padding: 0 0 0 4px; }
+
+/* ---------- Comparativo de informes ---------- */
+.comp-vacio { max-width: 560px; padding: 48px 0 32px; }
+.comp-vacio h2 { font-size: 26px; font-weight: 750; letter-spacing: -.025em; margin-bottom: 10px; }
+.comp-vacio p { color: var(--text-secondary); margin-bottom: 20px; }
+.comp-selector { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 28px 0 8px; }
+.comp-selector label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-secondary); flex: 1 1 260px; max-width: 420px; }
+.comp-selector select { font-weight: 600; }
+.comp-flecha { color: var(--text-muted); font-size: 18px; padding-bottom: 7px; }
+#comp-nota { margin: 0 0 16px; }
+.comp-tabla td { position: relative; }
+.comp-tabla td small { display: block; color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.comp-tabla td.num small { white-space: normal; max-width: 170px; margin-left: auto; }
+.comp-tabla td:nth-child(2) { white-space: nowrap; }
+.comp-tabla tr.sep td { border-top: 2px solid var(--line); }
+.comp-tabla td.num { font-weight: 600; }
+.comp-estado { white-space: nowrap; }
+.comp-estado .comp-a { margin: 0 8px; color: var(--text-muted); }
+.var-mejora { color: var(--good-ink); }
+.var-empeora { color: var(--critical-ink); }
+.var-neutra { color: var(--text-primary); }
+.var-igual, .var-nd { color: var(--text-muted); font-weight: 400 !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#comp-tipos b { font-weight: 700; margin-left: 2px; }
+.comp-cambios { max-height: 480px; margin-top: 4px; }
+.chip.cambio-nueva { background: var(--accent-soft); color: var(--text-primary); }
+.chip.cambio-cerrada { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good-ink); }
+.chip.cambio-reabierta, .chip.cambio-retirada { background: var(--critical-tint); color: var(--critical-ink); }
+#t-informes-tabla input { height: 32px; min-width: 140px; }
+#t-informes-tabla input[type="text"] { min-width: 220px; }
+#t-informes-tabla tr.actual td { background: var(--accent-soft); }
+.acciones-fila { white-space: nowrap; text-align: right; }
+.acciones-fila .btn-texto { font: inherit; font-size: 13px; font-weight: 600; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 4px 6px; }
+.acciones-fila .peligro { color: var(--critical-ink); }
+[data-panel="comparativo"] .bloque-cab .zona-botones { margin-top: 0; }
+
 /* ---------- Pipeline de fases ---------- */
 .pp-barra { display: flex; gap: 2px; height: 14px; margin-bottom: 18px; }
 .pp-seg { border-radius: 2px; min-width: 4px; }
@@ -334,7 +377,8 @@ select.activo { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--a
 .lienzo { position: relative; height: 290px; }
 .lienzo-alto { height: 360px; }
 .sel-anio { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }
-.sel-anio select { width: auto; height: 32px; }
+.sel-anio { min-width: 0; max-width: 100%; }
+.sel-anio select { width: auto; height: 32px; min-width: 0; max-width: 100%; }
 .nota { color: var(--text-muted); font-size: 12.5px; margin-top: 10px; }
 .graficos { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 .tarjeta { margin: 0; background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--radio); padding: 22px 24px; min-width: 0; }
@@ -408,6 +452,9 @@ figcaption, .tarjeta h3 { font-weight: 700; font-size: 16px; margin-bottom: 14px
   .pp-col:nth-child(3) { padding-left: 0; border-left: 0; }
 }
 @media (max-width: 600px) {
+  .comp-selector label { flex: 1 1 100%; max-width: none; }
+  .comp-flecha { display: none; }
+  .sel-informe { flex-wrap: wrap; }
   .bloque, .tarjeta { padding: 18px 16px; }
   .scorecard { grid-template-columns: minmax(0, 1fr) auto; }
   .sc-cab { display: none; }

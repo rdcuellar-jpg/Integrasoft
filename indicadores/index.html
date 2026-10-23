@@ -19,6 +19,7 @@
       <nav class="tabs" role="tablist" aria-label="Secciones">
         <button role="tab" data-tab="dashboard" aria-selected="true">Indicadores Dirección de Soluciones</button>
         <button role="tab" data-tab="seguimiento" aria-selected="false">HU abiertas</button>
+        <button role="tab" data-tab="comparativo" aria-selected="false">Comparativo de informes</button>
         <button role="tab" data-tab="detalle" aria-selected="false">Detalle de HU</button>
         <button role="tab" data-tab="ficha" aria-selected="false">Ficha de indicadores</button>
         <button role="tab" data-tab="config" aria-selected="false">Configuración</button>
@@ -50,7 +51,15 @@
 
       <main id="app" hidden>
         <header class="corte">
-          <p class="fuente" aria-live="polite"><span id="fuente-info"></span> <span id="fuente-alertas"></span></p>
+          <div class="corte-info">
+            <label class="sel-informe">Informe
+              <select id="sel-informe" aria-label="Informe que se está viendo"></select>
+            </label>
+            <p class="fuente" aria-live="polite"><span id="fuente-info"></span> <span id="fuente-alertas"></span></p>
+            <p class="aviso-corte" id="aviso-corte" hidden>
+              Estás viendo un corte anterior. <button class="btn-texto" id="btn-ultimo" type="button">Ver el más reciente</button>
+            </p>
+          </div>
           <details class="filtros-caja" id="caja-filtros">
             <summary>Filtrar <span id="filtros-activos"></span></summary>
             <div class="filtros" aria-label="Filtros">
@@ -160,6 +169,68 @@
       <div class="tabla-scroll tabla-detalle"><table class="tabla" id="t-detalle"></table></div>
     </section>
 
+    <!-- COMPARATIVO DE INFORMES -->
+    <section class="panel" data-panel="comparativo" hidden>
+      <div id="comp-vacio" class="comp-vacio" hidden>
+        <h2>Se necesitan al menos dos informes</h2>
+        <p>Cada vez que cargas un Excel se guarda como informe en este navegador. Carga el corte de otra fecha para poder compararlos.</p>
+        <label class="btn btn-primario" for="archivo">Cargar otro Excel</label>
+      </div>
+
+      <div id="comp-contenido">
+        <div class="comp-selector">
+          <label>Informe base<select id="comp-a"></select></label>
+          <span class="comp-flecha" aria-hidden="true">→</span>
+          <label>Comparar con<select id="comp-b"></select></label>
+          <button class="btn" id="comp-invertir" type="button">Invertir</button>
+        </div>
+        <p class="nota" id="comp-nota"></p>
+
+        <section class="bloque" aria-labelledby="t-comp-kpi">
+          <div class="bloque-cab">
+            <h2 id="t-comp-kpi">Indicadores</h2>
+            <p id="comp-kpi-resumen"></p>
+          </div>
+          <div class="tabla-scroll"><table class="tabla comp-tabla" id="t-comp-kpi-tabla"></table></div>
+        </section>
+
+        <section class="bloque" aria-labelledby="t-comp-base">
+          <h2 id="t-comp-base">Volumen de HU</h2>
+          <div class="tabla-scroll"><table class="tabla comp-tabla" id="t-comp-base-tabla"></table></div>
+        </section>
+
+        <section class="bloque" aria-labelledby="t-comp-evol">
+          <div class="bloque-cab">
+            <h2 id="t-comp-evol">Evolución por corte</h2>
+            <label class="sel-anio">Indicador <select id="comp-kpi-evol"></select></label>
+          </div>
+          <div class="lienzo"><canvas id="g-evolucion" aria-label="Evolución del indicador en los informes guardados"></canvas></div>
+          <p class="nota" id="comp-evol-nota"></p>
+        </section>
+
+        <section class="bloque" aria-labelledby="t-comp-hu">
+          <div class="bloque-cab">
+            <h2 id="t-comp-hu">Cambios en las HU</h2>
+            <div class="segmentos" role="radiogroup" aria-label="Tipo de cambio" id="comp-tipos"></div>
+          </div>
+          <div class="tabla-scroll tabla-detalle comp-cambios"><table class="tabla" id="t-comp-hu-tabla"></table></div>
+        </section>
+      </div>
+
+      <section class="bloque" aria-labelledby="t-informes">
+        <div class="bloque-cab">
+          <h2 id="t-informes">Informes guardados</h2>
+          <div class="zona-botones">
+            <button class="btn" id="btn-exportar-hist" type="button">Exportar histórico</button>
+            <label class="btn" for="importar-hist">Importar histórico</label>
+            <input id="importar-hist" type="file" accept=".json,application/json" hidden>
+          </div>
+        </div>
+        <p class="nota" id="hist-nota"></p>
+        <div class="tabla-scroll"><table class="tabla" id="t-informes-tabla"></table></div>
+      </section>
+    </section>
+
     <!-- FICHA -->
     <section class="panel" data-panel="ficha" hidden>
       <div class="tabla-scroll"><table class="tabla tabla-ficha" id="t-ficha"></table></div>
@@ -204,6 +275,7 @@
   <div id="toast" class="toast" role="status" hidden></div>
 
   <script src="js/indicadores.js"></script>
+  <script src="js/historico.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
