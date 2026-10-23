@@ -139,6 +139,11 @@
     var p = iso.split('-');
     return (+p[2]) + ' ' + MESES[+p[1] - 1] + ' ' + p[0];
   }
+  // Fecha AAAA-MM-DD en el nombre del archivo (las descargas de InteTrack la incluyen)
+  function fechaEnNombre(nombre) {
+    var m = String(nombre || '').match(/(20\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])/);
+    return m ? m[1] + '-' + m[2] + '-' + m[3] : null;
+  }
   function etiquetaInforme(inf) {
     return fechaCorte(inf.corte) + ', ' + inf.nombre;
   }
@@ -170,7 +175,7 @@
         archivo: archivo,
         hoja: hoja,
         cargado: new Date().toISOString(),
-        corte: hoyISO(fechaArchivo),
+        corte: fechaEnNombre(archivo) || hoyISO(fechaArchivo),
         huella: h,
         hu: p.registros.length,
         matriz: matriz

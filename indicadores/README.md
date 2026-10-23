@@ -14,10 +14,12 @@ cálculos de las hojas *Datos Indicadores*, *Indicadores Seguimiento*, *Ficha de
    y abre <http://localhost:8080>. También se puede publicar tal cual en GitHub Pages, IIS, Nginx, etc.
    (Abrir `index.html` directamente con doble clic también funciona para cargar archivos, pero el botón
    *Datos de ejemplo* necesita servidor).
-2. Pulsa **Cargar Excel / CSV** (o arrastra el archivo) y selecciona el `.xlsx` exportado. Se lee la hoja `Hoja1`;
-   si no existe, se usa la primera hoja que tenga las columnas `ID` y `Estado`.
+2. Pulsa **Cargar Excel** (o arrastra el archivo) y selecciona el Excel. Sirve directamente el `.xls` de paquetes de
+   trabajo tal como se descarga de InteTrack (hoja *Paquetes de trabajo*) o el libro `Base para Indicadores.xlsx`.
+   Se lee la hoja `Hoja1`; si no existe, se usa la primera hoja que tenga las columnas `ID` y `Estado`.
 3. Cada Excel cargado se guarda como un **informe** en el histórico del navegador, con una fecha de corte
-   (por defecto, la fecha de modificación del archivo; se puede cambiar). Si se vuelve a cargar el mismo archivo
+   (la fecha AAAA-MM-DD del nombre del archivo, como en las descargas de InteTrack; si no tiene, la fecha de
+   modificación del archivo; se puede cambiar). Si se vuelve a cargar el mismo archivo
    no se duplica. Al volver a abrir la app se muestra el último informe visto.
 
 Todo el procesamiento ocurre en el navegador: el archivo no se envía a ningún servidor.
