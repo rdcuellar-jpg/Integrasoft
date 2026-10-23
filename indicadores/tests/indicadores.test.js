@@ -170,3 +170,42 @@ test('las HU en Entrega a Clientes se suman a Entrega a Operaciones', () => {
   const r3 = I.calcular(I.parsearHoja(m, { equivalencias: [] }).registros);
   assert.equal(r3.base.consideradas, r.base.consideradas - 2);
 });
+
+test('avance por estado: suma las acciones anteriores; cerradas al 100%; otros estados 0%', () => {
+  const tabla = I.tablaAvance();
+  assert.deepEqual(tabla.filas.map((f) => Math.round(f.avance * 100)), [0, 10, 25, 30, 75]);
+  assert.equal(Math.round(tabla.total * 100), 100);
+  const av = (estado, fase = 'Análisis') => Math.round(I.avanceHU({ estado, fase }, tabla).avance * 100);
+  assert.equal(av('Levantamiento Requerimiento'), 0);
+  assert.equal(av('especificaciones Funcionales'), 10);
+  assert.equal(av('Aprobación cliente'), 25);
+  assert.equal(av('En desarrollo', 'Desarrollo'), 30);
+  assert.equal(av('Pruebas funcionales y Documentación', 'Pruebas'), 75);
+  assert.equal(av('Entrega a Operaciones', 'Cerrado'), 100);
+  assert.equal(av('CIERRE en Desarrollo o Solución', 'Cerrado'), 100);
+  assert.equal(av('Backlog'), 0);
+  assert.equal(av('Revisión (IDS)', 'Desarrollo'), 0);
+  // Con la opción de incluir el estado actual
+  const t2 = I.tablaAvance(Object.assign({}, I.AVANCE, { incluirActual: true }));
+  assert.deepEqual(t2.filas.map((f) => Math.round(f.avance * 100)), [10, 25, 30, 75, 100]);
+
+  const a = I.calcularAvance(registros);
+  assert.equal(a.n, 122);
+  // 87 cerradas al 100% + 1 espec. 10% + 15 desarrollo 30% + 9 pruebas 75%
+  const esperado = (87 * 1 + 1 * 0.10 + 15 * 0.30 + 9 * 0.75) / 122;
+  assert.ok(Math.abs(a.promedio - esperado) < 1e-9);
+  assert.equal(a.ejecutadas, 87);
+  assert.equal(a.enCurso, 25);
+  assert.equal(a.sinAvance, 10);
+  assert.equal(a.tramos.reduce((s, t) => s + t.n, 0), 122);
+  assert.equal(a.porCliente.reduce((s, g) => s + g.n, 0), 122);
+});
+
+test('avance: Entrega cliente cuenta como ejecutada', () => {
+  const m = ejemplo.matriz.map((f) => f.slice());
+  const id = String(m.slice(2).find((f) => f[7] === 'En desarrollo')[1]);
+  m.forEach((f, i) => { if (i > 1 && String(f[1]) === id) f[7] = 'Entrega cliente'; });
+  const a = I.calcularAvance(I.parsearHoja(m).registros);
+  assert.equal(a.lista.find((x) => x.hu.id === id).avance, 1);
+  assert.equal(a.ejecutadas, 88);
+});

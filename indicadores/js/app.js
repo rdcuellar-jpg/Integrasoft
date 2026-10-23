@@ -13,6 +13,7 @@
     resultado: null,
     graficos: {},
     vistaKpi: leer('vistaKpi', 'tabla'),
+    avGrupo: leer('avGrupo', 'porCliente'),
     informes: [],
     informeId: null,
     cache: {},
@@ -24,6 +25,7 @@
       parametros: leer('parametros', {}),
       estados: leer('estados', null) || I.ESTADOS.slice(),
       equivalencias: leer('equivalencias', null) || I.EQUIVALENCIAS.slice(),
+      avance: leer('avance', null) || JSON.parse(JSON.stringify(I.AVANCE)),
       palabras: leer('palabras', null) || I.PALABRAS_CLAVE.slice()
     }
   };
@@ -259,6 +261,9 @@
     var filtrados = registrosFiltrados();
     estado.filtrados = filtrados;
     estado.resultado = I.calcular(filtrados, estado.config);
+    estado.avance = I.calcularAvance(filtrados, estado.config.avance);
+    estado.registros.forEach(function (h) { h.avance = null; });
+    estado.avance.lista.forEach(function (x) { x.hu.avance = x.avance; });
     renderFuente();
     renderResumen();
     renderKpis();
@@ -268,7 +273,92 @@
     renderFicha();
     renderConfig();
     renderSelectorInforme();
+    renderAvance();
     renderComparativo();
+  }
+
+  // ---------- avance por estado ----------
+  function claseAccion(orden) {
+    return orden === 99 ? 'acc-ok' : orden >= 0 ? 'acc-' + (orden % 5 + 1) : 'acc-0';
+  }
+  function barraAvance(v) {
+    var p = Math.max(0, Math.min(1, v || 0)) * 100;
+    return '<span class="av-barra" role="img" aria-label="Avance ' + pct(v, 0) + '"><span style="width:' + p + '%"></span></span>';
+  }
+
+  function renderAvance() {
+    var a = estado.avance;
+    if (!a || !$('#av-titular')) return;
+    $('#av-titular').textContent = a.n
+      ? 'Las HU consideradas llevan ' + pct(a.promedio) + ' de avance promedio'
+      : 'No hay HU consideradas para calcular el avance';
+    var accionActual = estado.config.avance.incluirActual;
+    $('#av-detalle').textContent = a.n
+      ? fmtNum.format(a.ejecutadas) + ' HU están ejecutadas (Entrega a Operaciones, Entrega cliente o cerradas), ' +
+        fmtNum.format(a.enCurso) + ' van en curso y ' + fmtNum.format(a.sinAvance) + ' no tienen avance. ' +
+        (accionActual ? 'Cada HU suma la acción de su estado y las anteriores.' : 'Cada HU suma solo las acciones que ya terminó, antes de su estado actual.')
+      : '';
+    $('#av-cifras').innerHTML = [
+      ['Avance promedio', pct(a.promedio)], ['HU ejecutadas', fmtNum.format(a.ejecutadas)],
+      ['HU en curso', fmtNum.format(a.enCurso)], ['HU sin avance', fmtNum.format(a.sinAvance)]
+    ].map(function (c) { return '<div><dt>' + esc(c[0]) + '</dt><dd>' + esc(c[1]) + '</dd></div>'; }).join('');
+
+    // Tabla de esfuerzo (como la tabla de referencia del área)
+    var cuenta = {};
+    a.porEstado.forEach(function (e) { cuenta[e.orden] = (cuenta[e.orden] || 0) + e.n; });
+    var filas = a.tabla.filas.map(function (f) {
+      return '<tr><td><span class="acc ' + claseAccion(f.orden) + '">' + esc(f.accion) + '</span></td><td class="num">' + pct(f.esfuerzo, 0) +
+        '</td><td class="num">' + pct(f.avance, 0) + '</td><td>' + esc(f.estados.join(', ')) + '</td><td class="num">' + fmtNum.format(cuenta[f.orden] || 0) + '</td></tr>';
+    });
+    filas.push('<tr class="total"><td>Total</td><td class="num">' + pct(a.tabla.total, 0) + '</td><td></td><td></td><td></td></tr>');
+    filas.push('<tr><td><span class="acc acc-ok">Ejecutadas</span></td><td class="num"></td><td class="num">100%</td><td>Fase Cerrado: Entrega a Operaciones, Entrega cliente, CIERRE, Cierre…</td><td class="num">' + fmtNum.format(a.ejecutadas) + '</td></tr>');
+    filas.push('<tr><td><span class="acc acc-0">Otros estados</span></td><td class="num"></td><td class="num">0%</td><td>Backlog, Aprobacion PO, Revisión (IDS)…</td><td class="num">' + fmtNum.format(cuenta[-1] || 0) + '</td></tr>');
+    var aviso = Math.abs(a.tabla.total - 1) > 0.0001 ? '<p class="alerta">Los porcentajes de esfuerzo suman ' + pct(a.tabla.total, 0) + '; deberían sumar 100%. Ajústalos en Configuración.</p>' : '';
+    $('#t-av-esfuerzo-tabla').innerHTML = '<thead><tr><th>Acción</th><th class="num">% del esfuerzo</th><th class="num">Avance en este estado</th><th>Estados del ERP</th><th class="num">HU</th></tr></thead><tbody>' + filas.join('') + '</tbody>';
+    $$('.av-aviso').forEach(function (el) { el.remove(); });
+    if (aviso) $('#t-av-esfuerzo-tabla').parentNode.insertAdjacentHTML('beforebegin', aviso.replace('class="alerta"', 'class="alerta av-aviso"'));
+
+    // Tramos
+    var colTramo = ['acc-0', 'tr-1', 'tr-2', 'acc-ok'];
+    $('#av-tramos-resumen').textContent = fmtNum.format(a.n) + ' HU consideradas';
+    $('#av-tramos').innerHTML = '<div class="pp-barra" role="img" aria-label="Distribución de HU por tramo de avance">' + a.tramos.map(function (t, i) {
+      return t.n ? '<span class="pp-seg ' + colTramo[i] + '" style="flex:' + t.n + '" title="' + esc(t.nombre + ': ' + t.n + ' HU') + '"></span>' : '';
+    }).join('') + '</div><div class="pp-cols">' + a.tramos.map(function (t, i) {
+      return '<div class="pp-col"><div class="pp-fase"><i class="' + colTramo[i] + '"></i>' + esc(t.nombre) + '</div><div class="pp-num">' + fmtNum.format(t.n) + '<small>' + pct(t.pct) + '</small></div></div>';
+    }).join('') + '</div>';
+
+    // Por estado
+    $('#t-av-estado-tabla').innerHTML = '<thead><tr><th>Estado</th><th>Acción</th><th>Avance</th><th class="num">HU</th><th class="num">Aporte al promedio</th></tr></thead><tbody>' +
+      a.porEstado.map(function (e) {
+        var orig = Object.keys(e.originales).map(function (k) { return k + ' (' + e.originales[k] + ')'; });
+        return '<tr><td>' + esc(e.estado) + (orig.length ? '<small class="estado-erp">Incluye ' + esc(orig.join(', ')) + '</small>' : '') + '</td><td><span class="acc ' + claseAccion(e.orden) + '">' + esc(e.accion) +
+          '</span></td><td class="av-celda">' + barraAvance(e.avance) + '<b>' + pct(e.avance, 0) + '</b></td><td class="num">' + fmtNum.format(e.n) + '</td><td class="num">' + fmtPp.format(e.aporte * 100) + ' pp</td></tr>';
+      }).join('') + '<tr class="total"><td colspan="3">Avance promedio</td><td class="num">' + fmtNum.format(a.n) + '</td><td class="num">' + pct(a.promedio) + '</td></tr></tbody>';
+
+    // Por grupo
+    var g = ['porCliente', 'porSprint', 'porModulo', 'porAsignado'].indexOf(estado.avGrupo) === -1 ? 'porCliente' : estado.avGrupo;
+    $$('[data-av-grupo]').forEach(function (b) { b.setAttribute('aria-checked', String(b.getAttribute('data-av-grupo') === g)); });
+    var etiqueta = { porCliente: 'Cliente', porSprint: 'Sprint', porModulo: 'Módulo', porAsignado: 'Asignado a' }[g];
+    $('#t-av-grupo-tabla').innerHTML = '<thead><tr><th>' + etiqueta + '</th><th class="num">HU</th><th class="num">Ejecutadas</th><th>Avance promedio</th></tr></thead><tbody>' +
+      a[g].map(function (f) {
+        return '<tr><td>' + esc(f.nombre) + '</td><td class="num">' + fmtNum.format(f.n) + '</td><td class="num">' + fmtNum.format(f.ejecutadas) +
+          '</td><td class="av-celda">' + barraAvance(f.promedio) + '<b>' + pct(f.promedio) + '</b></td></tr>';
+      }).join('') + '</tbody>';
+
+    renderAvanceHU();
+  }
+
+  function renderAvanceHU() {
+    var a = estado.avance;
+    var q = ($('#av-buscar').value || '').trim().toLowerCase();
+    var filas = a.lista.filter(function (x) { return x.avance < 1; }).filter(function (x) {
+      return !q || [x.hu.id, x.hu.asunto, x.hu.cliente, x.hu.estado, x.hu.asignado].join(' ').toLowerCase().indexOf(q) !== -1;
+    }).sort(function (x, y) { return x.avance - y.avance || Number(x.hu.id) - Number(y.hu.id); });
+    $('#t-av-hu-tabla').innerHTML = '<thead><tr><th class="num">ID</th><th>Asunto</th><th>Cliente</th><th>Estado</th><th>Asignado a</th><th>Avance</th></tr></thead><tbody>' +
+      (filas.length ? filas.map(function (x) {
+        return '<tr><td class="num">' + esc(x.hu.id) + '</td><td class="asunto">' + esc(x.hu.asunto) + '</td><td>' + esc(x.hu.cliente) + '</td><td>' + esc(x.hu.estado) +
+          '</td><td>' + esc(x.hu.asignado || 'Sin asignar') + '</td><td class="av-celda">' + barraAvance(x.avance) + '<b>' + pct(x.avance, 0) + '</b></td></tr>';
+      }).join('') : '<tr><td colspan="6">' + (q ? 'Ninguna HU sin terminar coincide con la búsqueda.' : 'Todas las HU consideradas están ejecutadas.') + '</td></tr>') + '</tbody>';
   }
 
   function renderFuente() {
@@ -700,7 +790,7 @@
   var COLS_DETALLE = [
     ['id', 'ID'], ['asunto', 'Asunto'], ['cliente', 'Cliente'], ['estado', 'Estado'], ['fase', 'Fase'],
     ['enFlujo', 'En flujo'], ['tipoSolicitud', 'Tipo de Solicitud'], ['sprint', 'Sprint'], ['modulo', 'Módulo'],
-    ['responsable', 'Responsable'], ['asignado', 'Asignado a'], ['trabajoTotal', 'Trabajo total (h)'],
+    ['responsable', 'Responsable'], ['asignado', 'Asignado a'], ['trabajoTotal', 'Trabajo total (h)'], ['avance', 'Avance'],
     ['fechaFin', 'Fecha finalización'], ['precision', 'Precisión HU']
   ];
   function colsDetalle() {
@@ -724,6 +814,7 @@
     }).sort(function (a, b) {
       var va = a[o.campo], vb = b[o.campo], res;
       if (va instanceof Date || vb instanceof Date) res = (va ? va.getTime() : Infinity) - (vb ? vb.getTime() : Infinity);
+      else if (o.campo === 'avance') res = (va === null || va === undefined ? -1 : va) - (vb === null || vb === undefined ? -1 : vb);
       else if (o.campo === 'id' || o.campo === 'trabajoTotal') res = Number(va) - Number(vb) || String(va).localeCompare(String(vb));
       else res = String(va || '').localeCompare(String(vb || ''), 'es');
       return o.asc ? res : -res;
@@ -741,6 +832,7 @@
       return '<tr>' + colsDetalle().map(function (c) {
         var v = r[c[0]];
         if (c[0] === 'fechaFin') v = fecha(v);
+        if (c[0] === 'avance') return '<td class="num">' + (v === null || v === undefined ? '—' : pct(v, 0)) + '</td>';
         var cls = c[0] === 'asunto' ? ' class="asunto"' : c[0] === 'id' || c[0] === 'trabajoTotal' ? ' class="num"' : '';
         if (c[0] === 'enFlujo' || c[0] === 'fase') return '<td><span class="chip">' + esc(v) + '</span></td>';
         if (c[0] === 'estado' && r.estadoOriginal && r.estadoOriginal !== r.estado) {
@@ -845,12 +937,15 @@
       ['HU cerradas', rA.porFlujo[1].n, rB.porFlujo[1].n]
     ].concat(I.FASES.map(function (f) { return ['En ' + f.toLowerCase(), fase(rA, f), fase(rB, f)]; }))
       .concat([['Horas ejecutadas', rA.horas.ejecutadas, rB.horas.ejecutadas, ' h']]);
+    var avA = I.calcularAvance(registrosDeInforme(infA), estado.config.avance).promedio;
+    var avB = I.calcularAvance(registrosDeInforme(infB), estado.config.avance).promedio;
     $('#t-comp-base-tabla').innerHTML = '<thead><tr><th></th><th class="num">' + esc(fechaCorte(infA.corte)) + '</th><th class="num">' +
       esc(fechaCorte(infB.corte)) + '</th><th class="num">Diferencia</th></tr></thead><tbody>' + base.map(function (f, i) {
         var d = f[2] - f[1], u = f[3] || '';
         return '<tr' + (i === 4 || i === 8 ? ' class="sep"' : '') + '><td>' + esc(f[0]) + '</td><td class="num">' + fmtNum.format(f[1]) + u + '</td><td class="num">' + fmtNum.format(f[2]) + u +
           '</td><td class="num">' + (d === 0 ? '<span class="var-igual">0</span>' : (d > 0 ? '+' : '−') + fmtNum.format(Math.abs(d)) + u) + '</td></tr>';
-      }).join('') + '</tbody>';
+      }).join('') + '<tr class="sep"><td>Avance promedio de las HU</td><td class="num">' + pct(avA) + '</td><td class="num">' + pct(avB) + '</td><td class="num">' +
+      (avA === null || avB === null ? '' : Math.abs(avB - avA) < 0.0005 ? '<span class="var-igual">sin cambio</span>' : (avB > avA ? '+' : '−') + fmtPp.format(Math.abs(avB - avA) * 100) + ' pp') + '</td></tr></tbody>';
 
     renderEvolucion(infA, infB);
     renderCambiosHU(infA, infB);
@@ -1046,6 +1141,8 @@
         '<input type="' + c[2] + '"' + (c[2] === 'number' ? ' min="0" step="1"' : '') + ' data-param="' + c[0] + '" value="' + esc(v === null || v === undefined ? '' : v) + '" aria-label="' + esc(c[1]) + '"></div>';
     }).join('');
     $('#cfg-estados').value = estado.config.estados.map(function (e) { return e[0] + ' => ' + e[1]; }).join('\n');
+    $('#cfg-avance').value = estado.config.avance.acciones.map(function (x) { return x.accion + ' => ' + +(x.esfuerzo * 100).toFixed(2) + ' => ' + x.estados.join('; '); }).join('\n');
+    $('#cfg-avance-actual').checked = !!estado.config.avance.incluirActual;
     $('#cfg-equivalencias').value = estado.config.equivalencias.map(function (e) { return e[0] + ' => ' + e[1]; }).join('\n');
     $('#cfg-palabras').value = estado.config.palabras.map(function (p) { return p[0] + ' => ' + p[1]; }).join('\n');
   }
@@ -1094,6 +1191,24 @@
     guardar('estados', reglas);
     reparsear();
     toast(reglas.length + ' estados aplicados');
+  }
+
+  function guardarAvance() {
+    var acciones = [], error = '';
+    $('#cfg-avance').value.split(/\r?\n/).forEach(function (l) {
+      if (!l.trim()) return;
+      var p = l.split('=>').map(function (x) { return x.trim(); });
+      var n = Number(String(p[1] || '').replace('%', '').replace(',', '.'));
+      if (p.length !== 3 || !p[0] || isNaN(n)) { error = error || l; return; }
+      acciones.push({ accion: p[0], esfuerzo: n / 100, estados: p[2].split(';').map(function (x) { return x.trim(); }).filter(Boolean) });
+    });
+    if (error) { toast('Línea no válida: "' + error + '". Formato: Acción => % => estados separados por ;'); return; }
+    if (!acciones.length) { toast('Agrega al menos una acción.'); return; }
+    estado.config.avance = { acciones: acciones, incluirActual: $('#cfg-avance-actual').checked };
+    guardar('avance', estado.config.avance);
+    actualizar();
+    var total = acciones.reduce(function (s, a) { return s + a.esfuerzo; }, 0);
+    toast(Math.abs(total - 1) > 0.0001 ? 'Avance aplicado, pero los porcentajes suman ' + pct(total, 0) + ' en lugar de 100%.' : 'Avance por estado aplicado');
   }
 
   function guardarEquivalencias() {
@@ -1186,9 +1301,15 @@
     $('#sel-anio').addEventListener('change', function (e) { guardarParametros({ anio: e.target.value === 'todos' ? 'todos' : Number(e.target.value) }); });
     $('#btn-guardar-palabras').addEventListener('click', guardarPalabras);
     $('#btn-guardar-equivalencias').addEventListener('click', guardarEquivalencias);
+    $('#btn-guardar-avance').addEventListener('click', guardarAvance);
+    $('#av-agrupar').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-av-grupo]'); if (!b) return;
+      estado.avGrupo = b.getAttribute('data-av-grupo'); guardar('avGrupo', estado.avGrupo); renderAvance();
+    });
+    $('#av-buscar').addEventListener('input', renderAvanceHU);
     $('#btn-restaurar').addEventListener('click', function () {
-      estado.config = { metas: {}, parametros: {}, estados: I.ESTADOS.slice(), equivalencias: I.EQUIVALENCIAS.slice(), palabras: I.PALABRAS_CLAVE.slice() };
-      ['metas', 'parametros', 'estados', 'equivalencias', 'palabras', 'manuales'].forEach(function (k) { try { localStorage.removeItem(CLAVE + k); } catch (e) { /* */ } });
+      estado.config = { metas: {}, parametros: {}, estados: I.ESTADOS.slice(), equivalencias: I.EQUIVALENCIAS.slice(), avance: JSON.parse(JSON.stringify(I.AVANCE)), palabras: I.PALABRAS_CLAVE.slice() };
+      ['metas', 'parametros', 'estados', 'equivalencias', 'avance', 'palabras', 'manuales'].forEach(function (k) { try { localStorage.removeItem(CLAVE + k); } catch (e) { /* */ } });
       renderConfig.hecho = false;
       reparsear();
       toast('Configuración restaurada');

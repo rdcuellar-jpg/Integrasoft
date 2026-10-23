@@ -19,6 +19,7 @@
       <nav class="tabs" role="tablist" aria-label="Secciones">
         <button role="tab" data-tab="dashboard" aria-selected="true">Indicadores Dirección de Soluciones</button>
         <button role="tab" data-tab="seguimiento" aria-selected="false">HU abiertas</button>
+        <button role="tab" data-tab="avance" aria-selected="false">Avance por estado</button>
         <button role="tab" data-tab="comparativo" aria-selected="false">Comparativo de informes</button>
         <button role="tab" data-tab="detalle" aria-selected="false">Detalle de HU</button>
         <button role="tab" data-tab="ficha" aria-selected="false">Ficha de indicadores</button>
@@ -170,6 +171,59 @@
       <div class="tabla-scroll tabla-detalle"><table class="tabla" id="t-detalle"></table></div>
     </section>
 
+    <!-- AVANCE POR ESTADO -->
+    <section class="panel" data-panel="avance" hidden>
+      <div class="veredicto">
+        <div>
+          <h1 id="av-titular"></h1>
+          <p id="av-detalle"></p>
+        </div>
+        <dl class="cifras" id="av-cifras"></dl>
+      </div>
+
+      <section class="bloque" aria-labelledby="t-av-esfuerzo">
+        <div class="bloque-cab">
+          <h2 id="t-av-esfuerzo">Esfuerzo por acción</h2>
+          <p>Una HU suma el esfuerzo de las acciones anteriores a su estado. Se edita en Configuración.</p>
+        </div>
+        <div class="tabla-scroll"><table class="tabla av-esfuerzo" id="t-av-esfuerzo-tabla"></table></div>
+      </section>
+
+      <section class="bloque" aria-labelledby="t-av-tramos">
+        <div class="bloque-cab">
+          <h2 id="t-av-tramos">Cómo se reparte el avance</h2>
+          <p id="av-tramos-resumen"></p>
+        </div>
+        <div id="av-tramos"></div>
+      </section>
+
+      <section class="bloque" aria-labelledby="t-av-estado">
+        <h2 id="t-av-estado">Avance por estado</h2>
+        <div class="tabla-scroll"><table class="tabla" id="t-av-estado-tabla"></table></div>
+      </section>
+
+      <section class="bloque" aria-labelledby="t-av-grupo">
+        <div class="bloque-cab">
+          <h2 id="t-av-grupo">Avance promedio por</h2>
+          <div class="segmentos" role="radiogroup" aria-label="Agrupar avance por" id="av-agrupar">
+            <button type="button" role="radio" data-av-grupo="porCliente" aria-checked="true">Cliente</button>
+            <button type="button" role="radio" data-av-grupo="porSprint" aria-checked="false">Sprint</button>
+            <button type="button" role="radio" data-av-grupo="porModulo" aria-checked="false">Módulo</button>
+            <button type="button" role="radio" data-av-grupo="porAsignado" aria-checked="false">Asignado a</button>
+          </div>
+        </div>
+        <div class="tabla-scroll"><table class="tabla" id="t-av-grupo-tabla"></table></div>
+      </section>
+
+      <section class="bloque" aria-labelledby="t-av-hu">
+        <div class="bloque-cab">
+          <h2 id="t-av-hu">HU sin terminar</h2>
+          <input type="search" id="av-buscar" placeholder="Buscar por ID, asunto, cliente…" aria-label="Buscar HU sin terminar">
+        </div>
+        <div class="tabla-scroll tabla-detalle"><table class="tabla" id="t-av-hu-tabla"></table></div>
+      </section>
+    </section>
+
     <!-- COMPARATIVO DE INFORMES -->
     <section class="panel" data-panel="comparativo" hidden>
       <div id="comp-vacio" class="comp-vacio" hidden>
@@ -256,6 +310,15 @@
           <textarea id="cfg-estados" rows="10" spellcheck="false"></textarea>
           <div class="zona-botones">
             <button class="btn btn-primario" id="btn-guardar-estados" type="button">Aplicar tabla</button>
+          </div>
+        </div>
+        <div class="tarjeta ancho">
+          <h3>Avance por estado</h3>
+          <p class="nota">Una acción por línea, en orden, con el formato <code>Acción =&gt; % del esfuerzo =&gt; estados del ERP separados por ;</code>. Los % deben sumar 100. Las HU en fase Cerrado (Entrega a Operaciones, Entrega cliente, cerradas) cuentan al 100% y los estados no mencionados suman 0%.</p>
+          <textarea id="cfg-avance" rows="6" spellcheck="false"></textarea>
+          <label class="check-cfg"><input type="checkbox" id="cfg-avance-actual"> Sumar también la acción del estado actual (si no, solo las anteriores)</label>
+          <div class="zona-botones">
+            <button class="btn btn-primario" id="btn-guardar-avance" type="button">Aplicar avance</button>
           </div>
         </div>
         <div class="tarjeta ancho">

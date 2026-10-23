@@ -49,6 +49,13 @@
   --critical-ink: #a53223;
   --critical-tint: rgba(185, 58, 42, .09);
   --neutral-ink: #4a5865;
+  /* Acciones del avance (colores de la tabla de esfuerzo del área) */
+  --acc-1: #8eb4e3;
+  --acc-2: #92d050;
+  --acc-3: #ffd966;
+  --acc-4: #f4b183;
+  --acc-5: #c59bd8;
+  --acc-ink: #15202b;
   --radio: 8px;
   --fuente: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -84,6 +91,12 @@
     --critical-ink: #f58a7a;
     --critical-tint: rgba(240, 117, 99, .12);
     --neutral-ink: #a9b6bf;
+    --acc-1: #4f7fb8;
+    --acc-2: #5f9a2e;
+    --acc-3: #b8962a;
+    --acc-4: #b86f45;
+    --acc-5: #8a62a3;
+    --acc-ink: #f3f6f8;
   }
 }
 :root[data-theme="dark"] {
@@ -117,6 +130,12 @@
   --critical-ink: #f58a7a;
   --critical-tint: rgba(240, 117, 99, .12);
   --neutral-ink: #a9b6bf;
+  --acc-1: #4f7fb8;
+  --acc-2: #5f9a2e;
+  --acc-3: #b8962a;
+  --acc-4: #b86f45;
+  --acc-5: #8a62a3;
+  --acc-ink: #f3f6f8;
 }
 
 * { box-sizing: border-box; }
@@ -360,6 +379,28 @@ select.activo { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--a
 .acciones-fila .peligro { color: var(--critical-ink); }
 [data-panel="comparativo"] .bloque-cab .zona-botones { margin-top: 0; }
 
+/* ---------- Avance por estado ---------- */
+.acc { display: inline-block; padding: 2px 9px; border-radius: 4px; font-size: 12.5px; font-weight: 600; color: var(--acc-ink); white-space: nowrap; }
+.acc-1 { background: var(--acc-1); } .acc-2 { background: var(--acc-2); } .acc-3 { background: var(--acc-3); }
+.acc-4 { background: var(--acc-4); } .acc-5 { background: var(--acc-5); }
+.acc-ok { background: var(--accent); color: var(--accent-ink); }
+.acc-0 { background: var(--surface-2); color: var(--text-secondary); }
+.pp-seg.acc-0 { background: var(--line); }
+.pp-fase i.acc-0 { background: var(--line); }
+.av-esfuerzo td:nth-child(4) { color: var(--text-secondary); font-size: 13px; min-width: 220px; }
+.av-celda { white-space: nowrap; min-width: 180px; }
+.av-celda b { font-weight: 650; margin-left: 10px; font-size: 13px; }
+.av-barra { display: inline-block; vertical-align: middle; width: 120px; height: 8px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.av-barra span { display: block; height: 100%; background: var(--accent); border-radius: 0 2px 2px 0; }
+.tr-1 { background: var(--fase-1); } .tr-2 { background: var(--fase-2); }
+.pp-seg.acc-ok, .pp-fase i.acc-ok { background: var(--fase-4); }
+.tabla-detalle #t-av-hu-tabla { min-width: 820px; }
+#t-av-hu-tabla .asunto { max-width: 380px; }
+#t-av-hu-tabla .av-barra { width: 80px; }
+.check-cfg { display: flex; align-items: center; gap: 8px; font-size: 13.5px; margin-top: 10px; }
+#av-buscar { width: min(320px, 100%); }
+.av-aviso { margin: 0 0 10px; }
+
 /* ---------- Pipeline de fases ---------- */
 .pp-barra { display: flex; gap: 2px; height: 14px; margin-bottom: 18px; }
 .pp-seg { border-radius: 2px; min-width: 4px; }
@@ -457,6 +498,10 @@ figcaption, .tarjeta h3 { font-weight: 700; font-size: 16px; margin-bottom: 14px
   .pp-col:nth-child(3) { padding-left: 0; border-left: 0; }
 }
 @media (max-width: 600px) {
+  .acc { white-space: normal; }
+  .av-esfuerzo th:nth-child(4), .av-esfuerzo td:nth-child(4) { display: none; }
+  .av-celda { min-width: 0; }
+  .av-barra { width: 64px; }
   .comp-selector label { flex: 1 1 100%; max-width: none; }
   .comp-flecha { display: none; }
   .sel-informe { flex-wrap: wrap; }
