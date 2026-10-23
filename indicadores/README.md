@@ -74,6 +74,22 @@ Arriba se elige el **informe** (corte) que se quiere ver; todas las vistas muest
   Los indicadores se pueden ver de cuatro formas: *Tabla con meta* (barra frente a la meta), *Distancia a la meta*
   (puntos por encima o por debajo), *Por estado* (requieren atención, en meta, sin datos) y *Por cliente*
   (matriz de indicadores calculados con las HU de cada cliente).
+- **Avance por estado**: avance de cada HU según su estado, con la tabla de esfuerzo del área:
+  | Acción | % del esfuerzo | Avance de una HU en ese estado |
+  |---|---|---|
+  | Levantamiento de requerimientos | 10 % | 0 % |
+  | Especificaciones funcionales | 15 % | 10 % |
+  | Aprobación cliente | 5 % | 25 % |
+  | Desarrollo | 45 % | 30 % |
+  | Pruebas funcionales y documentación | 25 % | 75 % |
+  | Entrega a Operaciones, Entrega cliente y cerradas (fase Cerrado) | | 100 % |
+  | Estados no mencionados (Backlog, Aprobacion PO, Revisión (IDS)…) | | 0 % |
+
+  Cada HU suma el esfuerzo de las acciones anteriores a su estado. Muestra el avance promedio, la distribución por
+  tramos, el avance por estado (con su aporte al promedio), el avance promedio por cliente, sprint, módulo o
+  asignado, y la lista de HU sin terminar. La tabla de acciones, sus % y estados, y la opción de sumar también la
+  acción del estado actual se editan en Configuración. El Detalle de HU muestra el avance de cada HU y el
+  Comparativo de informes compara el avance promedio entre cortes.
 - **Comparativo de informes**: elige un informe base y otro para comparar, y muestra:
   - los 10 indicadores de cada corte, la variación en puntos (verde si mejora frente a la meta, rojo si empeora)
     y el cambio de estado;

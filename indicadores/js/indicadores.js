@@ -48,6 +48,22 @@
     ['Entrega*cliente*', 'Entrega a Operaciones']
   ];
 
+  // Avance por estado: % del esfuerzo de cada acción y los estados del ERP que le
+  // corresponden, en orden. Una HU en un estado suma las acciones anteriores a ese estado;
+  // las HU en fase Cerrado (Entrega a Operaciones, Entrega cliente, CIERRE…) van al 100%
+  // y los estados no mencionados suman 0%.
+  var AVANCE = {
+    acciones: [
+      { accion: 'Levantamiento de requerimientos', esfuerzo: 0.10, estados: ['Levantamiento Requerimiento'] },
+      { accion: 'Especificaciones funcionales', esfuerzo: 0.15, estados: ['especificaciones Funcionales'] },
+      { accion: 'Aprobación cliente', esfuerzo: 0.05, estados: ['Aprobación cliente'] },
+      { accion: 'Desarrollo', esfuerzo: 0.45, estados: ['En desarrollo'] },
+      { accion: 'Pruebas funcionales y documentación', esfuerzo: 0.25, estados: ['Pruebas funcionales y Documentación'] }
+    ],
+    // false: la HU suma solo las acciones anteriores a su estado (la actual está en curso)
+    incluirActual: false
+  };
+
   var PARAMETROS = {
     tipoExcluidoBacklog: 'Deuda Tecnica', // J55
     marcaAlcance: 'Cambio de Alcance',    // J58
@@ -487,7 +503,87 @@
     return { cambios: cambios, resumen: resumen };
   }
 
+  // ---------- Avance por estado ----------
+  /** Tabla estado -> avance acumulado según la configuración de acciones. */
+  function tablaAvance(cfg) {
+    cfg = cfg || AVANCE;
+    var acumulado = 0, filas = [];
+    cfg.acciones.forEach(function (a, i) {
+      var antes = acumulado;
+      acumulado += Number(a.esfuerzo) || 0;
+      filas.push({ orden: i, accion: a.accion, esfuerzo: Number(a.esfuerzo) || 0, estados: a.estados || [],
+        avance: cfg.incluirActual === false ? antes : acumulado });
+    });
+    return { filas: filas, total: acumulado };
+  }
+
+  /** Avance (0 a 1) de una HU y la acción en la que está. */
+  function avanceHU(h, tabla) {
+    if (h.fase === 'Cerrado') return { avance: 1, accion: 'Ejecutada', orden: 99 };
+    var e = normalizar(h.estado);
+    for (var i = 0; i < tabla.filas.length; i++) {
+      var f = tabla.filas[i];
+      if (f.estados.some(function (x) { return normalizar(x) === e; })) return { avance: Math.min(1, f.avance), accion: f.accion, orden: f.orden };
+    }
+    return { avance: 0, accion: 'Sin avance definido', orden: -1 };
+  }
+
+  function calcularAvance(registros, cfg) {
+    var tabla = tablaAvance(cfg);
+    var lista = registros.filter(function (h) { return h.considerada; }).map(function (h) {
+      var a = avanceHU(h, tabla);
+      return { hu: h, avance: a.avance, accion: a.accion, orden: a.orden };
+    });
+    var n = lista.length;
+    var suma = lista.reduce(function (s, x) { return s + x.avance; }, 0);
+    var porEstado = {};
+    lista.forEach(function (x) {
+      var k = x.hu.estado;
+      if (!porEstado[k]) porEstado[k] = { estado: k, accion: x.accion, orden: x.orden, avance: x.avance, n: 0, originales: {} };
+      porEstado[k].n++;
+      if (x.hu.estadoOriginal && x.hu.estadoOriginal !== k) porEstado[k].originales[x.hu.estadoOriginal] = (porEstado[k].originales[x.hu.estadoOriginal] || 0) + 1;
+    });
+    var estados = Object.keys(porEstado).map(function (k) { return porEstado[k]; })
+      .sort(function (a, b) { return a.avance - b.avance || a.orden - b.orden || b.n - a.n; });
+    estados.forEach(function (e) { e.aporte = n ? e.avance * e.n / n : 0; });
+    var tramos = [
+      { nombre: 'Sin avance (0%)', min: 0, max: 0 },
+      { nombre: '1% a 49%', min: 0.0001, max: 0.4999 },
+      { nombre: '50% a 99%', min: 0.5, max: 0.9999 },
+      { nombre: 'Ejecutadas (100%)', min: 1, max: 1 }
+    ].map(function (t) {
+      var c = lista.filter(function (x) { return x.avance >= t.min - 1e-9 && x.avance <= t.max + 1e-9; }).length;
+      return { nombre: t.nombre, n: c, pct: n ? c / n : 0 };
+    });
+    var agrupar = function (campo) {
+      var g = {};
+      lista.forEach(function (x) {
+        var k = x.hu[campo] || (campo === 'asignado' ? 'Sin asignar' : '(vacío)');
+        if (!g[k]) g[k] = { nombre: k, n: 0, suma: 0, ejecutadas: 0 };
+        g[k].n++; g[k].suma += x.avance; if (x.avance >= 1) g[k].ejecutadas++;
+      });
+      return Object.keys(g).map(function (k) { var f = g[k]; f.promedio = f.n ? f.suma / f.n : 0; return f; })
+        .sort(function (a, b) { return b.n - a.n || a.nombre.localeCompare(b.nombre); });
+    };
+    return {
+      tabla: tabla,
+      lista: lista,
+      n: n,
+      promedio: n ? suma / n : null,
+      ejecutadas: lista.filter(function (x) { return x.avance >= 1; }).length,
+      enCurso: lista.filter(function (x) { return x.avance > 0 && x.avance < 1; }).length,
+      sinAvance: lista.filter(function (x) { return x.avance === 0; }).length,
+      porEstado: estados,
+      tramos: tramos,
+      porCliente: agrupar('cliente'),
+      porSprint: agrupar('sprint'),
+      porModulo: agrupar('modulo'),
+      porAsignado: agrupar('asignado')
+    };
+  }
+
   return {
+    AVANCE: AVANCE, tablaAvance: tablaAvance, avanceHU: avanceHU, calcularAvance: calcularAvance,
     ESTADOS: ESTADOS, EQUIVALENCIAS: EQUIVALENCIAS, FASES: FASES, TIPOS_SOLICITUD: TIPOS_SOLICITUD, KPIS: KPIS, PARAMETROS: PARAMETROS,
     PALABRAS_CLAVE: PALABRAS_CLAVE, EXCLUIDO: EXCLUIDO, SIN_MAPEAR: SIN_MAPEAR, SIN_MODULO: SIN_MODULO, SIN_SPRINT: SIN_SPRINT,
     parseFecha: parseFecha, parsearHoja: parsearHoja, asignarModulo: asignarModulo, calcular: calcular,
