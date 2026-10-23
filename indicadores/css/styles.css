@@ -400,6 +400,7 @@ figcaption, .tarjeta h3 { font-weight: 700; font-size: 16px; margin-bottom: 14px
 .tabla-ficha td { min-width: 120px; }
 .tabla-ficha td:nth-child(3), .tabla-ficha td:nth-child(4) { min-width: 220px; }
 .punto { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+.estado-erp { display: block; color: var(--text-muted); font-size: 12px; }
 .chip { display: inline-block; padding: 1px 8px; border-radius: 4px; background: var(--surface-2); font-size: 12.5px; white-space: nowrap; }
 
 .barra-detalle { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; margin: 28px 0 8px; }

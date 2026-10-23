@@ -23,6 +23,7 @@
       metas: leer('metas', {}),
       parametros: leer('parametros', {}),
       estados: leer('estados', null) || I.ESTADOS.slice(),
+      equivalencias: leer('equivalencias', null) || I.EQUIVALENCIAS.slice(),
       palabras: leer('palabras', null) || I.PALABRAS_CLAVE.slice()
     }
   };
@@ -116,7 +117,7 @@
   }
 
   function opcionesParseo() {
-    return { palabras: estado.config.palabras, estados: estado.config.estados };
+    return { palabras: estado.config.palabras, estados: estado.config.estados, equivalencias: estado.config.equivalencias };
   }
 
   function reparsear() {
@@ -709,7 +710,7 @@
       if (flujo && r.enFlujo !== flujo) return false;
       if (fase && r.fase !== fase) return false;
       if (q) {
-        var txt = [r.id, r.asunto, r.cliente, r.estado, r.responsable, r.asignado, r.sprint, r.modulo, r.precision].join(' ').toLowerCase();
+        var txt = [r.id, r.asunto, r.cliente, r.estado, r.estadoOriginal, r.responsable, r.asignado, r.sprint, r.modulo, r.precision].join(' ').toLowerCase();
         if (txt.indexOf(q) === -1) return false;
       }
       return true;
@@ -735,6 +736,9 @@
         if (c[0] === 'fechaFin') v = fecha(v);
         var cls = c[0] === 'asunto' ? ' class="asunto"' : c[0] === 'id' || c[0] === 'trabajoTotal' ? ' class="num"' : '';
         if (c[0] === 'enFlujo' || c[0] === 'fase') return '<td><span class="chip">' + esc(v) + '</span></td>';
+        if (c[0] === 'estado' && r.estadoOriginal && r.estadoOriginal !== r.estado) {
+          return '<td>' + esc(v) + '<small class="estado-erp">En el ERP: ' + esc(r.estadoOriginal) + '</small></td>';
+        }
         return '<td' + cls + '>' + esc(v) + '</td>';
       }).join('') + '</tr>';
     }).join('') + '</tbody>';
@@ -1035,6 +1039,7 @@
         '<input type="' + c[2] + '"' + (c[2] === 'number' ? ' min="0" step="1"' : '') + ' data-param="' + c[0] + '" value="' + esc(v === null || v === undefined ? '' : v) + '" aria-label="' + esc(c[1]) + '"></div>';
     }).join('');
     $('#cfg-estados').value = estado.config.estados.map(function (e) { return e[0] + ' => ' + e[1]; }).join('\n');
+    $('#cfg-equivalencias').value = estado.config.equivalencias.map(function (e) { return e[0] + ' => ' + e[1]; }).join('\n');
     $('#cfg-palabras').value = estado.config.palabras.map(function (p) { return p[0] + ' => ' + p[1]; }).join('\n');
   }
 
@@ -1082,6 +1087,17 @@
     guardar('estados', reglas);
     reparsear();
     toast(reglas.length + ' estados aplicados');
+  }
+
+  function guardarEquivalencias() {
+    var reglas = leerReglas('#cfg-equivalencias');
+    var conFase = estado.config.estados.map(function (e) { return e[0]; });
+    var malas = reglas.filter(function (r) { return conFase.indexOf(r[1]) === -1; });
+    if (malas.length) { toast('El estado destino debe estar en la tabla de fases: ' + malas.map(function (r) { return r[1]; }).join(', ') + '.'); return; }
+    estado.config.equivalencias = reglas;
+    guardar('equivalencias', reglas);
+    reparsear();
+    toast(reglas.length ? reglas.length + ' equivalencia(s) aplicada(s)' : 'Equivalencias eliminadas');
   }
 
   function guardarPalabras() {
@@ -1162,9 +1178,10 @@
     $('#btn-guardar-estados').addEventListener('click', guardarEstados);
     $('#sel-anio').addEventListener('change', function (e) { guardarParametros({ anio: e.target.value === 'todos' ? 'todos' : Number(e.target.value) }); });
     $('#btn-guardar-palabras').addEventListener('click', guardarPalabras);
+    $('#btn-guardar-equivalencias').addEventListener('click', guardarEquivalencias);
     $('#btn-restaurar').addEventListener('click', function () {
-      estado.config = { metas: {}, parametros: {}, estados: I.ESTADOS.slice(), palabras: I.PALABRAS_CLAVE.slice() };
-      ['metas', 'parametros', 'estados', 'palabras', 'manuales'].forEach(function (k) { try { localStorage.removeItem(CLAVE + k); } catch (e) { /* */ } });
+      estado.config = { metas: {}, parametros: {}, estados: I.ESTADOS.slice(), equivalencias: I.EQUIVALENCIAS.slice(), palabras: I.PALABRAS_CLAVE.slice() };
+      ['metas', 'parametros', 'estados', 'equivalencias', 'palabras', 'manuales'].forEach(function (k) { try { localStorage.removeItem(CLAVE + k); } catch (e) { /* */ } });
       renderConfig.hecho = false;
       reparsear();
       toast('Configuración restaurada');
