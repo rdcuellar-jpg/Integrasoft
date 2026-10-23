@@ -438,10 +438,41 @@
     };
   }
 
+  /**
+   * Compara las HU de dos informes (A = base, B = posterior) por ID.
+   * Solo se tienen en cuenta las HU consideradas de cada informe.
+   * Tipos de cambio: nueva, retirada, cerrada, reabierta, estado (cambio de estado sin cambiar En flujo).
+   */
+  function compararHU(registrosA, registrosB) {
+    var mapa = function (lista) {
+      var m = {};
+      lista.forEach(function (h) { if (h.considerada) m[h.id] = h; });
+      return m;
+    };
+    var A = mapa(registrosA), B = mapa(registrosB);
+    var cambios = [];
+    Object.keys(B).forEach(function (id) {
+      var b = B[id], a = A[id];
+      if (!a) { cambios.push({ tipo: 'nueva', id: id, asunto: b.asunto, cliente: b.cliente, de: '', a: b.estado }); return; }
+      if (a.estado === b.estado) return;
+      var tipo = a.enFlujo === 'Abierto' && b.enFlujo === 'Cerrado' ? 'cerrada'
+        : a.enFlujo === 'Cerrado' && b.enFlujo === 'Abierto' ? 'reabierta' : 'estado';
+      cambios.push({ tipo: tipo, id: id, asunto: b.asunto, cliente: b.cliente, de: a.estado, a: b.estado, faseDe: a.fase, faseA: b.fase });
+    });
+    Object.keys(A).forEach(function (id) {
+      if (!B[id]) cambios.push({ tipo: 'retirada', id: id, asunto: A[id].asunto, cliente: A[id].cliente, de: A[id].estado, a: '' });
+    });
+    var orden = { nueva: 0, cerrada: 1, reabierta: 2, estado: 3, retirada: 4 };
+    cambios.sort(function (x, y) { return orden[x.tipo] - orden[y.tipo] || (Number(x.id) - Number(y.id)) || String(x.id).localeCompare(String(y.id)); });
+    var resumen = { nueva: 0, cerrada: 0, reabierta: 0, estado: 0, retirada: 0 };
+    cambios.forEach(function (c) { resumen[c.tipo]++; });
+    return { cambios: cambios, resumen: resumen };
+  }
+
   return {
     ESTADOS: ESTADOS, FASES: FASES, TIPOS_SOLICITUD: TIPOS_SOLICITUD, KPIS: KPIS, PARAMETROS: PARAMETROS,
     PALABRAS_CLAVE: PALABRAS_CLAVE, EXCLUIDO: EXCLUIDO, SIN_MAPEAR: SIN_MAPEAR, SIN_MODULO: SIN_MODULO, SIN_SPRINT: SIN_SPRINT,
     parseFecha: parseFecha, parsearHoja: parsearHoja, asignarModulo: asignarModulo, calcular: calcular,
-    evaluar: evaluar, coincideCriterio: coincideCriterio
+    evaluar: evaluar, coincideCriterio: coincideCriterio, compararHU: compararHU
   };
 });

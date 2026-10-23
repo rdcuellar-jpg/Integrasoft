@@ -13,6 +13,11 @@
     resultado: null,
     graficos: {},
     vistaKpi: leer('vistaKpi', 'tabla'),
+    informes: [],
+    informeId: null,
+    cache: {},
+    versionConfig: 0,
+    comp: { a: null, b: null, tipo: 'todos', kpi: leer('compKpi', 'backlog') },
     orden: { campo: 'id', asc: true },
     config: {
       metas: leer('metas', {}),
@@ -80,8 +85,7 @@
             return v instanceof Date ? String(v.getDate()).padStart(2, '0') + '-' + String(v.getMonth() + 1).padStart(2, '0') + '-' + v.getFullYear() : v;
           });
         });
-        usarMatriz(matriz, file.name + ' — ' + nombre, new Date());
-        toast('Datos cargados desde ' + file.name);
+        registrarInforme(matriz, file.name, nombre, file.lastModified ? new Date(file.lastModified) : new Date());
       } catch (err) {
         toast('Error al leer el archivo: ' + err.message);
       }
@@ -92,7 +96,7 @@
   function cargarEjemplo() {
     fetch('data/hoja1-ejemplo.json')
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { usarMatriz(d.matriz, d.fuente + ' (ejemplo)', new Date()); toast('Datos de ejemplo cargados'); })
+      .then(function (d) { registrarInforme(d.matriz, 'Datos de ejemplo', 'Hoja1', new Date()); })
       .catch(function () { toast('No se pudieron leer los datos de ejemplo. Abra la app desde un servidor web (ver README).'); });
   }
 
@@ -104,7 +108,7 @@
     estado.registros = p.registros;
     estado.filasLeidas = p.filasLeidas;
     estado.columnas = p.columnas;
-    guardar('datos', { matriz: matriz, fuente: fuente, cargado: cuando.toISOString() });
+    if (!estado.historicoPersistente) guardar('datos', { matriz: matriz, fuente: fuente, cargado: cuando.toISOString() });
     $('#zona-carga').hidden = true;
     $('#app').hidden = false;
     construirFiltros();
@@ -116,10 +120,92 @@
   }
 
   function reparsear() {
+    estado.cache = {};
+    estado.versionConfig++;
     if (!estado.matriz) return;
     estado.registros = I.parsearHoja(estado.matriz, opcionesParseo()).registros;
     construirFiltros();
     actualizar();
+  }
+
+  // ---------- histórico de informes ----------
+  function hoyISO(d) {
+    d = d || new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function fechaCorte(iso) {
+    if (!iso) return 'sin fecha';
+    var p = iso.split('-');
+    return (+p[2]) + ' ' + MESES[+p[1] - 1] + ' ' + p[0];
+  }
+  function etiquetaInforme(inf) {
+    return fechaCorte(inf.corte) + ', ' + inf.nombre;
+  }
+  function informeActual() {
+    return estado.informes.find(function (i) { return i.id === estado.informeId; }) || null;
+  }
+
+  function refrescarInformes() {
+    return Historico.listar().then(function (lista) {
+      estado.informes = lista;
+      return lista;
+    });
+  }
+
+  /** Guarda el Excel cargado como informe (si no estaba ya) y lo muestra. */
+  function registrarInforme(matriz, archivo, hoja, fechaArchivo) {
+    var h = Historico.huella(matriz);
+    refrescarInformes().then(function (lista) {
+      var existente = lista.find(function (i) { return i.huella === h; });
+      if (existente) {
+        mostrarInforme(existente);
+        toast('Este archivo ya estaba guardado como el informe del ' + fechaCorte(existente.corte) + '.');
+        return null;
+      }
+      var p = I.parsearHoja(matriz, opcionesParseo());
+      var inf = {
+        id: 'inf-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+        nombre: archivo.replace(/\.(xlsx|xls|csv)$/i, ''),
+        archivo: archivo,
+        hoja: hoja,
+        cargado: new Date().toISOString(),
+        corte: hoyISO(fechaArchivo),
+        huella: h,
+        hu: p.registros.length,
+        matriz: matriz
+      };
+      return Historico.guardar(inf).then(function () { return refrescarInformes(); }).then(function () {
+        mostrarInforme(inf);
+        toast('Informe guardado con fecha de corte ' + fechaCorte(inf.corte) + '. Puedes cambiarla en Comparativo de informes.');
+      });
+    }).catch(function (err) { toast('No se pudo guardar el informe: ' + err.message); });
+  }
+
+  function mostrarInforme(inf) {
+    estado.informeId = inf.id;
+    guardar('informeActual', inf.id);
+    usarMatriz(inf.matriz, inf.nombre + ' — ' + (inf.hoja || 'Hoja1'), new Date(inf.cargado));
+  }
+
+  function renderSelectorInforme() {
+    var sel = $('#sel-informe');
+    sel.innerHTML = estado.informes.map(function (i) {
+      return '<option value="' + esc(i.id) + '"' + (i.id === estado.informeId ? ' selected' : '') + '>' + esc(etiquetaInforme(i)) + '</option>';
+    }).join('');
+    sel.parentNode.hidden = estado.informes.length < 2;
+    $('#aviso-corte').hidden = !(estado.informes.length && estado.informeId && estado.informes[0].id !== estado.informeId);
+  }
+
+  // Registros de un informe del histórico, con la configuración y filtros actuales
+  function registrosDeInforme(inf) {
+    var c = estado.cache[inf.id];
+    if (!c || c.version !== estado.versionConfig) {
+      c = estado.cache[inf.id] = { version: estado.versionConfig, registros: I.parsearHoja(inf.matriz, opcionesParseo()).registros };
+    }
+    return filtrar(c.registros);
+  }
+  function resultadoDeInforme(inf) {
+    return I.calcular(registrosDeInforme(inf), estado.config);
   }
 
   // ---------- filtros ----------
@@ -147,7 +233,11 @@
   }
 
   function registrosFiltrados() {
-    return estado.registros.filter(function (r) {
+    return filtrar(estado.registros);
+  }
+
+  function filtrar(lista) {
+    return lista.filter(function (r) {
       for (var campo in estado.filtros) {
         var v = estado.filtros[campo];
         if (v && (r[campo] || '(vacío)') !== v) return false;
@@ -169,6 +259,8 @@
     renderDetalle();
     renderFicha();
     renderConfig();
+    renderSelectorInforme();
+    renderComparativo();
   }
 
   function renderFuente() {
@@ -663,6 +755,248 @@
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   }
 
+  // ---------- comparativo de informes ----------
+  var TIPOS_CAMBIO = [
+    ['todos', 'Todos'], ['nueva', 'Nuevas'], ['cerrada', 'Cerradas'], ['reabierta', 'Reabiertas'],
+    ['estado', 'Cambio de estado'], ['retirada', 'Retiradas']
+  ];
+  var DESCRIPCION_CAMBIO = {
+    nueva: 'Nueva', cerrada: 'Cerrada', reabierta: 'Reabierta', estado: 'Cambio de estado', retirada: 'Retirada'
+  };
+
+  function opcionesInformes(seleccionado) {
+    return estado.informes.map(function (i) {
+      return '<option value="' + esc(i.id) + '"' + (i.id === seleccionado ? ' selected' : '') + '>' + esc(etiquetaInforme(i)) + '</option>';
+    }).join('');
+  }
+
+  // Variación en puntos; favorable según el tipo de meta
+  function celdaVariacion(k, a, b) {
+    if (a === null || b === null) return '<td class="num var-nd">sin dato</td>';
+    var d = (b - a) * 100;
+    if (Math.abs(d) < 0.05) return '<td class="num var-igual">sin cambio</td>';
+    var cls = 'var-neutra';
+    if (tieneMeta(k)) cls = (k.tipoMeta === '<=' ? d < 0 : d > 0) ? 'var-mejora' : 'var-empeora';
+    var flecha = d > 0 ? '▲' : '▼';
+    return '<td class="num ' + cls + '"><span aria-hidden="true">' + flecha + '</span> ' + (d > 0 ? '+' : '−') + fmtPp.format(Math.abs(d)) + ' pp' +
+      (cls === 'var-mejora' ? '<span class="sr"> (mejora)</span>' : cls === 'var-empeora' ? '<span class="sr"> (empeora)</span>' : '') + '</td>';
+  }
+
+  function renderComparativo() {
+    if (!$('#comp-contenido')) return;
+    var lista = estado.informes;
+    renderInformesGuardados();
+    var hay = lista.length >= 2;
+    $('#comp-vacio').hidden = hay;
+    $('#comp-contenido').hidden = !hay;
+    if (!hay) return;
+
+    var c = estado.comp;
+    var existe = function (id) { return lista.some(function (i) { return i.id === id; }); };
+    if (!existe(c.b)) c.b = lista[0].id;
+    if (!existe(c.a) || c.a === c.b) c.a = (lista.find(function (i) { return i.id !== c.b; }) || lista[1]).id;
+    $('#comp-a').innerHTML = opcionesInformes(c.a);
+    $('#comp-b').innerHTML = opcionesInformes(c.b);
+
+    var infA = lista.find(function (i) { return i.id === c.a; });
+    var infB = lista.find(function (i) { return i.id === c.b; });
+    var rA = resultadoDeInforme(infA), rB = resultadoDeInforme(infB);
+    var filtros = Object.keys(estado.filtros).filter(function (k) { return estado.filtros[k]; }).length;
+    $('#comp-nota').textContent = 'Se compara el corte del ' + fechaCorte(infA.corte) + ' con el del ' + fechaCorte(infB.corte) + '. ' +
+      (filtros ? 'Los filtros activos se aplican a los dos informes. ' : '') +
+      'Las metas y parámetros son los de Configuración.';
+
+    // Indicadores
+    var mejoran = 0, empeoran = 0;
+    var filas = rB.kpis.map(function (kB, i) {
+      var kA = rA.kpis[i];
+      var d = kA.resultado === null || kB.resultado === null ? null : kB.resultado - kA.resultado;
+      if (d !== null && Math.abs(d) >= 0.0005 && tieneMeta(kB)) {
+        if (kB.tipoMeta === '<=' ? d < 0 : d > 0) mejoran++; else empeoran++;
+      }
+      var meta = tieneMeta(kB) ? (kB.tipoMeta === '<=' ? '≤ ' : '≥ ') + pct(kB.meta, 0) : 'Sin meta';
+      var cambioEstado = kA.estado === kB.estado ? pill(kB.estado) : pill(kA.estado) + '<span class="comp-a" aria-label="pasa a">→</span>' + pill(kB.estado);
+      return '<tr' + (i === 6 ? ' class="sep"' : '') + '><td><strong>' + esc(kB.nombre) + '</strong></td><td>' + meta + '</td>' +
+        '<td class="num">' + pct(kA.resultado) + '<small>' + esc(textoDetalle(kA)) + '</small></td>' +
+        '<td class="num">' + pct(kB.resultado) + '<small>' + esc(textoDetalle(kB)) + '</small></td>' +
+        celdaVariacion(kB, kA.resultado, kB.resultado) + '<td class="comp-estado">' + cambioEstado + '</td></tr>';
+    });
+    $('#t-comp-kpi-tabla').innerHTML = '<thead><tr><th>Indicador</th><th>Meta</th><th class="num">' + esc(fechaCorte(infA.corte)) + '</th><th class="num">' +
+      esc(fechaCorte(infB.corte)) + '</th><th class="num">Variación</th><th>Estado</th></tr></thead><tbody>' + filas.join('') + '</tbody>';
+    $('#comp-kpi-resumen').textContent = mejoran + ' mejoran y ' + empeoran + ' empeoran frente a su meta';
+
+    // Volumen de HU
+    var fase = function (r, f) { return r.porFase.find(function (x) { return x.fase === f; }).n; };
+    var base = [
+      ['HU únicas en la base', rA.base.total, rB.base.total],
+      ['HU consideradas', rA.base.consideradas, rB.base.consideradas],
+      ['HU abiertas', rA.porFlujo[0].n, rB.porFlujo[0].n],
+      ['HU cerradas', rA.porFlujo[1].n, rB.porFlujo[1].n]
+    ].concat(I.FASES.map(function (f) { return ['En ' + f.toLowerCase(), fase(rA, f), fase(rB, f)]; }))
+      .concat([['Horas ejecutadas', rA.horas.ejecutadas, rB.horas.ejecutadas, ' h']]);
+    $('#t-comp-base-tabla').innerHTML = '<thead><tr><th></th><th class="num">' + esc(fechaCorte(infA.corte)) + '</th><th class="num">' +
+      esc(fechaCorte(infB.corte)) + '</th><th class="num">Diferencia</th></tr></thead><tbody>' + base.map(function (f, i) {
+        var d = f[2] - f[1], u = f[3] || '';
+        return '<tr' + (i === 4 || i === 8 ? ' class="sep"' : '') + '><td>' + esc(f[0]) + '</td><td class="num">' + fmtNum.format(f[1]) + u + '</td><td class="num">' + fmtNum.format(f[2]) + u +
+          '</td><td class="num">' + (d === 0 ? '<span class="var-igual">0</span>' : (d > 0 ? '+' : '−') + fmtNum.format(Math.abs(d)) + u) + '</td></tr>';
+      }).join('') + '</tbody>';
+
+    renderEvolucion(infA, infB);
+    renderCambiosHU(infA, infB);
+  }
+
+  function renderEvolucion(infA, infB) {
+    var sel = $('#comp-kpi-evol');
+    var kpiDef = I.KPIS.find(function (k) { return k.id === estado.comp.kpi; }) || I.KPIS[1];
+    sel.innerHTML = I.KPIS.map(function (k) {
+      return '<option value="' + k.id + '"' + (k.id === kpiDef.id ? ' selected' : '') + '>' + esc(k.nombre) + '</option>';
+    }).join('');
+    var orden = estado.informes.slice().sort(function (a, b) {
+      return (a.corte || '').localeCompare(b.corte || '') || (a.cargado || '').localeCompare(b.cargado || '');
+    });
+    var puntos = orden.map(function (inf) {
+      var k = resultadoDeInforme(inf).kpis.find(function (x) { return x.id === kpiDef.id; });
+      return { inf: inf, k: k, v: k.resultado === null ? null : +(k.resultado * 100).toFixed(2) };
+    });
+    var k0 = puntos[puntos.length - 1].k;
+    var sinDato = puntos.filter(function (p) { return p.v === null; }).length;
+    $('#comp-evol-nota').textContent = puntos.length + ' informes guardados, ordenados por fecha de corte. Los puntos más grandes son los dos informes comparados.' +
+      (sinDato ? ' ' + sinDato + ' sin dato para este indicador.' : '');
+    if (typeof Chart === 'undefined') return;
+    configurarChart();
+    var c = colores();
+    var resaltar = function (p) { return p.inf.id === infA.id || p.inf.id === infB.id; };
+    var datasets = [{
+      label: kpiDef.nombre, data: puntos.map(function (p) { return p.v; }),
+      borderColor: c.s[0], backgroundColor: c.s[0], borderWidth: 2, tension: 0, spanGaps: true,
+      pointRadius: puntos.map(function (p) { return resaltar(p) ? 6 : 4; }),
+      pointHoverRadius: 7, pointBorderColor: c.superficie, pointBorderWidth: 2
+    }];
+    if (tieneMeta(k0)) {
+      datasets.push({
+        label: 'Meta ' + (k0.tipoMeta === '<=' ? '≤ ' : '≥ ') + pct(k0.meta, 0), data: puntos.map(function () { return +(k0.meta * 100).toFixed(2); }),
+        borderColor: c.texto, borderWidth: 1.5, borderDash: [5, 4], pointRadius: 0, pointHoverRadius: 0, fill: false
+      });
+    }
+    grafico('g-evolucion', {
+      type: 'line',
+      data: { labels: puntos.map(function (p) { return fechaCorte(p.inf.corte); }), datasets: datasets },
+      options: {
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: { grid: { display: false }, border: { color: c.grid }, ticks: { maxRotation: 0, autoSkipPadding: 12 } },
+          y: { beginAtZero: true, grid: { color: c.grid }, border: { display: false }, ticks: { callback: function (v) { return v + '%'; } } }
+        },
+        plugins: {
+          legend: { position: 'top', align: 'start' },
+          tooltip: { callbacks: {
+            title: function (its) { return etiquetaInforme(puntos[its[0].dataIndex].inf); },
+            label: function (it) { return ' ' + it.dataset.label + ': ' + (it.raw === null ? 'sin dato' : fmtPp.format(it.raw) + '%'); }
+          } }
+        }
+      }
+    });
+  }
+
+  function renderCambiosHU(infA, infB) {
+    var comp = I.compararHU(registrosDeInforme(infA), registrosDeInforme(infB));
+    var total = comp.cambios.length;
+    var tipo = estado.comp.tipo;
+    $('#comp-tipos').innerHTML = TIPOS_CAMBIO.map(function (t) {
+      var n = t[0] === 'todos' ? total : comp.resumen[t[0]];
+      return '<button type="button" role="radio" data-cambio="' + t[0] + '" aria-checked="' + (t[0] === tipo) + '">' + esc(t[1]) + ' <b>' + n + '</b></button>';
+    }).join('');
+    var filas = comp.cambios.filter(function (x) { return tipo === 'todos' || x.tipo === tipo; });
+    $('#t-comp-hu-tabla').innerHTML = '<thead><tr><th>Cambio</th><th class="num">ID</th><th>Asunto</th><th>Cliente</th><th>Estado el ' +
+      esc(fechaCorte(infA.corte)) + '</th><th>Estado el ' + esc(fechaCorte(infB.corte)) + '</th></tr></thead><tbody>' +
+      (filas.length ? filas.map(function (x) {
+        return '<tr><td><span class="chip cambio-' + x.tipo + '">' + esc(DESCRIPCION_CAMBIO[x.tipo]) + '</span></td><td class="num">' + esc(x.id) +
+          '</td><td class="asunto">' + esc(x.asunto) + '</td><td>' + esc(x.cliente) + '</td><td>' + esc(x.de || 'No estaba') + '</td><td>' + esc(x.a || 'Ya no está') + '</td></tr>';
+      }).join('') : '<tr><td colspan="6">No hay HU con este tipo de cambio entre los dos informes.</td></tr>') + '</tbody>';
+  }
+
+  function renderInformesGuardados() {
+    var lista = estado.informes;
+    Historico.persistente().then(function (ok) {
+      $('#hist-nota').textContent = (ok
+        ? 'Los informes se guardan en este navegador. Para usarlos en otro equipo, exporta el histórico e impórtalo allá. '
+        : 'Este navegador no permite guardar datos: el histórico se perderá al cerrar la página. Exporta el histórico para conservarlo. ') +
+        'Una HU retirada es la que ya no aparece entre las consideradas del informe posterior.';
+    });
+    $('#t-informes-tabla').innerHTML = '<thead><tr><th>Fecha de corte</th><th>Nombre</th><th>Archivo</th><th>Cargado</th><th class="num">HU únicas</th><th></th></tr></thead><tbody>' +
+      (lista.length ? lista.map(function (i) {
+        var actual = i.id === estado.informeId;
+        return '<tr' + (actual ? ' class="actual"' : '') + '>' +
+          '<td><input type="date" data-inf-corte="' + esc(i.id) + '" value="' + esc(i.corte || '') + '" aria-label="Fecha de corte"></td>' +
+          '<td><input type="text" data-inf-nombre="' + esc(i.id) + '" value="' + esc(i.nombre) + '" aria-label="Nombre del informe"></td>' +
+          '<td>' + esc(i.archivo) + '</td><td>' + esc(new Date(i.cargado).toLocaleDateString('es-CO')) + '</td><td class="num">' + fmtNum.format(i.hu || 0) + '</td>' +
+          '<td class="acciones-fila">' + (actual ? '<span class="chip">En pantalla</span>' : '<button class="btn-texto" type="button" data-inf-ver="' + esc(i.id) + '">Ver</button>') +
+          '<button class="btn-texto peligro" type="button" data-inf-borrar="' + esc(i.id) + '">Eliminar</button></td></tr>';
+      }).join('') : '<tr><td colspan="6">Aún no hay informes guardados.</td></tr>') + '</tbody>';
+  }
+
+  function cambiarInforme(id, cambios) {
+    Historico.actualizar(id, cambios).then(refrescarInformes).then(function () {
+      var inf = informeActual();
+      if (inf && inf.id === id && cambios.nombre) estado.fuente = inf.nombre + ' — ' + (inf.hoja || 'Hoja1');
+      actualizar();
+    }).catch(function (err) { toast(err.message); });
+  }
+
+  function borrarInforme(id) {
+    var inf = estado.informes.find(function (i) { return i.id === id; });
+    if (!inf || !window.confirm('¿Eliminar el informe del ' + fechaCorte(inf.corte) + ' (' + inf.nombre + ')? Esta acción no se puede deshacer.')) return;
+    delete estado.cache[id];
+    Historico.eliminar(id).then(refrescarInformes).then(function (lista) {
+      toast('Informe eliminado');
+      if (id !== estado.informeId) { actualizar(); return; }
+      if (lista.length) { mostrarInforme(lista[0]); return; }
+      estado.informeId = null;
+      try { localStorage.removeItem(CLAVE + 'informeActual'); localStorage.removeItem(CLAVE + 'datos'); } catch (e) { /* */ }
+      $('#app').hidden = true;
+      $('#zona-carga').hidden = false;
+    });
+  }
+
+  function exportarHistorico() {
+    var datos = { tipo: 'historico-indicadores', version: 1, exportado: new Date().toISOString(), informes: estado.informes };
+    var blob = new Blob([JSON.stringify(datos)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'historico-indicadores-' + hoyISO() + '.json';
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+
+  function importarHistorico(file) {
+    if (!file) return;
+    var lector = new FileReader();
+    lector.onload = function () {
+      var datos;
+      try { datos = JSON.parse(lector.result); } catch (e) { toast('El archivo no es un histórico válido (JSON).'); return; }
+      var entrada = datos && datos.tipo === 'historico-indicadores' && Array.isArray(datos.informes) ? datos.informes : null;
+      if (!entrada) { toast('El archivo no es un histórico exportado desde esta app.'); return; }
+      var huellas = estado.informes.map(function (i) { return i.huella; });
+      var nuevos = entrada.filter(function (i) {
+        if (!i || !Array.isArray(i.matriz) || !i.id) return false;
+        try { I.parsearHoja(i.matriz); } catch (e) { return false; }
+        i.huella = i.huella || Historico.huella(i.matriz);
+        return huellas.indexOf(i.huella) === -1;
+      });
+      Promise.all(nuevos.map(function (i) {
+        return Historico.guardar({
+          id: String(i.id), nombre: String(i.nombre || i.archivo || 'Informe importado'), archivo: String(i.archivo || ''),
+          hoja: String(i.hoja || 'Hoja1'), cargado: i.cargado || new Date().toISOString(),
+          corte: /^\d{4}-\d{2}-\d{2}$/.test(i.corte) ? i.corte : hoyISO(), huella: i.huella, hu: Number(i.hu) || 0, matriz: i.matriz
+        });
+      })).then(refrescarInformes).then(function (lista) {
+        toast(nuevos.length ? nuevos.length + ' informe(s) importado(s); ' + (entrada.length - nuevos.length) + ' ya estaban o no eran válidos.' : 'No había informes nuevos para importar.');
+        if (!estado.informeId && lista.length) mostrarInforme(lista[0]); else actualizar();
+      }).catch(function (err) { toast('No se pudo importar: ' + err.message); });
+    };
+    lector.readAsText(file);
+  }
+
   // ---------- ficha ----------
   function renderFicha() {
     var k = estado.resultado.kpis;
@@ -763,7 +1097,7 @@
   function aplicarTema(t) {
     if (t) document.documentElement.setAttribute('data-theme', t);
     else document.documentElement.removeAttribute('data-theme');
-    if (estado.resultado) { renderDistribucion(); renderSeguimiento(); }
+    if (estado.resultado) { renderDistribucion(); renderSeguimiento(); renderComparativo(); }
   }
   function temaActual() {
     var t = document.documentElement.getAttribute('data-theme');
@@ -836,6 +1170,34 @@
       toast('Configuración restaurada');
     });
 
+    $('#sel-informe').addEventListener('change', function (e) {
+      var inf = estado.informes.find(function (i) { return i.id === e.target.value; });
+      if (inf) mostrarInforme(inf);
+    });
+    $('#btn-ultimo').addEventListener('click', function () { if (estado.informes[0]) mostrarInforme(estado.informes[0]); });
+    $('#comp-a').addEventListener('change', function (e) { estado.comp.a = e.target.value; renderComparativo(); });
+    $('#comp-b').addEventListener('change', function (e) { estado.comp.b = e.target.value; renderComparativo(); });
+    $('#comp-invertir').addEventListener('click', function () {
+      var a = estado.comp.a; estado.comp.a = estado.comp.b; estado.comp.b = a; renderComparativo();
+    });
+    $('#comp-kpi-evol').addEventListener('change', function (e) { estado.comp.kpi = e.target.value; guardar('compKpi', e.target.value); renderComparativo(); });
+    $('#comp-tipos').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-cambio]'); if (!b) return;
+      estado.comp.tipo = b.getAttribute('data-cambio'); renderComparativo();
+    });
+    $('#t-informes-tabla').addEventListener('change', function (e) {
+      var t = e.target;
+      if (t.hasAttribute('data-inf-corte') && t.value) cambiarInforme(t.getAttribute('data-inf-corte'), { corte: t.value });
+      if (t.hasAttribute('data-inf-nombre') && t.value.trim()) cambiarInforme(t.getAttribute('data-inf-nombre'), { nombre: t.value.trim() });
+    });
+    $('#t-informes-tabla').addEventListener('click', function (e) {
+      var ver = e.target.closest('[data-inf-ver]'), borrar = e.target.closest('[data-inf-borrar]');
+      if (ver) { var inf = estado.informes.find(function (i) { return i.id === ver.getAttribute('data-inf-ver'); }); if (inf) mostrarInforme(inf); }
+      if (borrar) borrarInforme(borrar.getAttribute('data-inf-borrar'));
+    });
+    $('#btn-exportar-hist').addEventListener('click', exportarHistorico);
+    $('#importar-hist').addEventListener('change', function (e) { importarHistorico(e.target.files[0]); e.target.value = ''; });
+
     $('#btn-tema').addEventListener('click', function () {
       var t = temaActual() === 'dark' ? 'light' : 'dark';
       guardar('tema', t);
@@ -857,10 +1219,29 @@
     enlazar();
     var tab = leer('tab', null);
     if (tab && $('.tabs [data-tab="' + tab + '"]')) $('.tabs [data-tab="' + tab + '"]').click();
-    var previo = leer('datos', null);
-    if (previo && previo.matriz) {
-      try { usarMatriz(previo.matriz, previo.fuente, new Date(previo.cargado)); } catch (e) { /* datos guardados inválidos */ }
-    }
+    Historico.persistente().then(function (ok) {
+      estado.historicoPersistente = ok;
+      return refrescarInformes();
+    }).then(function (lista) {
+      var previo = leer('datos', null);
+      // Migración: la última carga de versiones anteriores pasa a ser el primer informe del histórico
+      if (!lista.length && previo && previo.matriz) {
+        var inf = {
+          id: 'inf-' + Date.now().toString(36), nombre: String(previo.fuente || 'Informe').split(' — ')[0].replace(/\.(xlsx|xls|csv)$/i, ''),
+          archivo: String(previo.fuente || '').split(' — ')[0], hoja: 'Hoja1', cargado: previo.cargado || new Date().toISOString(),
+          corte: hoyISO(new Date(previo.cargado || Date.now())), huella: Historico.huella(previo.matriz),
+          hu: 0, matriz: previo.matriz
+        };
+        try { inf.hu = I.parsearHoja(inf.matriz).registros.length; } catch (e) { return; }
+        return Historico.guardar(inf).then(refrescarInformes).then(function (l) {
+          if (estado.historicoPersistente) { try { localStorage.removeItem(CLAVE + 'datos'); } catch (e) { /* */ } }
+          mostrarInforme(l[0]);
+        });
+      }
+      if (!lista.length) return;
+      var id = leer('informeActual', null);
+      mostrarInforme(lista.find(function (i) { return i.id === id; }) || lista[0]);
+    }).catch(function () { /* histórico no disponible */ });
   }
 
   iniciar();

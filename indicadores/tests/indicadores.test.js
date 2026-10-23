@@ -117,3 +117,33 @@ test('parseFecha admite texto, Date y serial de Excel', () => {
   assert.equal(I.parseFecha(46164).getFullYear(), 2026);
   assert.equal(I.parseFecha(''), null);
 });
+
+test('compararHU detecta HU nuevas, cerradas, reabiertas, cambios de estado y retiradas', () => {
+  const m = ejemplo.matriz.map((f) => f.slice());
+  const col = { id: 1, estado: 7 };
+  const ids = (estado) => [...new Set(m.slice(2).filter((f) => f[col.estado] === estado).map((f) => String(f[col.id])))];
+  const cambiar = (id, estado) => m.forEach((f, i) => { if (i > 1 && String(f[col.id]) === id) f[col.estado] = estado; });
+  const abierta = ids('En desarrollo')[0];
+  const cerrada = ids('Entrega a Operaciones')[0];
+  const enAnalisis = ids('Levantamiento Requerimiento')[0];
+  const retirada = ids('Pruebas funcionales y Documentación')[0];
+  cambiar(abierta, 'CIERRE en Desarrollo o Solución');
+  cambiar(cerrada, 'En desarrollo');
+  cambiar(enAnalisis, 'En desarrollo');
+  cambiar(retirada, 'Nuevo / Identificado');
+  const nueva = m[2].slice(); nueva[col.id] = '999999'; nueva[col.estado] = 'Backlog'; m.push(nueva);
+
+  const B = I.parsearHoja(m).registros;
+  const { resumen, cambios } = I.compararHU(registros, B);
+  assert.deepEqual(resumen, { nueva: 1, cerrada: 1, reabierta: 1, estado: 1, retirada: 1 });
+  assert.equal(cambios.find((c) => c.tipo === 'cerrada').id, abierta);
+  assert.equal(cambios.find((c) => c.tipo === 'reabierta').id, cerrada);
+  assert.deepEqual(cambios.find((c) => c.tipo === 'estado'), {
+    tipo: 'estado', id: enAnalisis, asunto: cambios.find((c) => c.tipo === 'estado').asunto,
+    cliente: cambios.find((c) => c.tipo === 'estado').cliente,
+    de: 'Levantamiento Requerimiento', a: 'En desarrollo', faseDe: 'Análisis', faseA: 'Desarrollo'
+  });
+  assert.equal(cambios.find((c) => c.tipo === 'retirada').id, retirada);
+  assert.equal(cambios[0].tipo, 'nueva');
+  assert.deepEqual(I.compararHU(registros, registros).resumen, { nueva: 0, cerrada: 0, reabierta: 0, estado: 0, retirada: 0 });
+});

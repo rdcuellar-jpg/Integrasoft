@@ -16,8 +16,9 @@ cálculos de las hojas *Datos Indicadores*, *Indicadores Seguimiento*, *Ficha de
    *Datos de ejemplo* necesita servidor).
 2. Pulsa **Cargar Excel / CSV** (o arrastra el archivo) y selecciona el `.xlsx` exportado. Se lee la hoja `Hoja1`;
    si no existe, se usa la primera hoja que tenga las columnas `ID` y `Estado`.
-3. Los datos quedan guardados en el navegador: al volver a abrir la app se muestra la última carga.
-   Para actualizar, vuelve a cargar el archivo.
+3. Cada Excel cargado se guarda como un **informe** en el histórico del navegador, con una fecha de corte
+   (por defecto, la fecha de modificación del archivo; se puede cambiar). Si se vuelve a cargar el mismo archivo
+   no se duplica. Al volver a abrir la app se muestra el último informe visto.
 
 Todo el procesamiento ocurre en el navegador: el archivo no se envía a ningún servidor.
 
@@ -61,11 +62,23 @@ la tabla de fase por estado y la tabla de palabras clave.
 
 ## Vistas
 
+Arriba se elige el **informe** (corte) que se quiere ver; todas las vistas muestran los indicadores de ese corte.
+
 - **Indicadores Dirección de Soluciones** (vista principal): titular con cuántos indicadores están en meta,
   indicadores de la plantilla, distribución de HU por fase y estado, cierres por mes y HU por Tipo de Solicitud.
   Los indicadores se pueden ver de cuatro formas: *Tabla con meta* (barra frente a la meta), *Distancia a la meta*
   (puntos por encima o por debajo), *Por estado* (requieren atención, en meta, sin datos) y *Por cliente*
   (matriz de indicadores calculados con las HU de cada cliente).
+- **Comparativo de informes**: elige un informe base y otro para comparar, y muestra:
+  - los 10 indicadores de cada corte, la variación en puntos (verde si mejora frente a la meta, rojo si empeora)
+    y el cambio de estado;
+  - el volumen de HU (únicas, consideradas, abiertas, cerradas, por fase y horas) con su diferencia;
+  - la evolución de un indicador en todos los informes guardados, ordenados por fecha de corte, con la meta;
+  - las HU que cambiaron entre los dos cortes: nuevas, cerradas, reabiertas, con cambio de estado y retiradas
+    (las que ya no aparecen entre las consideradas del informe posterior).
+  Los filtros activos y la configuración actual se aplican a los dos informes. Al final está la lista de
+  **informes guardados**, donde se cambia el nombre o la fecha de corte, se abre o se elimina cada informe,
+  y se puede **exportar o importar el histórico** (archivo JSON) para llevarlo a otro equipo o respaldarlo.
 - **Seguimiento HU abiertas**: HU abiertas por Cliente, Sprint, Módulo y Asignado a, cruzadas por Tipo de Solicitud.
 - **Detalle HU**: listado con búsqueda, filtros, orden por columna y exportación a CSV.
 - **Ficha de indicadores**: definición, fórmula, frecuencia, meta, responsable y resultado actual.
@@ -80,6 +93,7 @@ indicadores/
 ├── css/styles.css
 ├── js/indicadores.js        # motor de cálculo (sin dependencias, usable en Node)
 ├── js/app.js                # interfaz y gráficos
+├── js/historico.js          # histórico de informes en el navegador (IndexedDB)
 ├── js/vendor/               # Chart.js 4.4.1 (MIT) y SheetJS 0.18.5 (Apache-2.0), locales para uso sin internet
 ├── fonts/                   # Schibsted Grotesk (SIL OFL 1.1), local para uso sin internet
 ├── data/hoja1-ejemplo.json  # copia de la Hoja1 actual para el botón "Datos de ejemplo"
