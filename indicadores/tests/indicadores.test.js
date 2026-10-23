@@ -147,3 +147,26 @@ test('compararHU detecta HU nuevas, cerradas, reabiertas, cambios de estado y re
   assert.equal(cambios[0].tipo, 'nueva');
   assert.deepEqual(I.compararHU(registros, registros).resumen, { nueva: 0, cerrada: 0, reabierta: 0, estado: 0, retirada: 0 });
 });
+
+test('las HU en Entrega a Clientes se suman a Entrega a Operaciones', () => {
+  const m = ejemplo.matriz.map((f) => f.slice());
+  const ids = [...new Set(m.slice(2).filter((f) => f[7] === 'En desarrollo').map((f) => String(f[1])))].slice(0, 2);
+  m.forEach((f, i) => {
+    if (i > 1 && String(f[1]) === ids[0]) f[7] = 'Entrega a Clientes';
+    if (i > 1 && String(f[1]) === ids[1]) f[7] = 'ENTREGA CLIENTES ';
+  });
+  const regs = I.parsearHoja(m).registros;
+  const h = regs.find((x) => x.id === ids[0]);
+  assert.equal(h.estado, 'Entrega a Operaciones');
+  assert.equal(h.estadoOriginal, 'Entrega a Clientes');
+  assert.equal(h.fase, 'Cerrado');
+  assert.equal(h.enFlujo, 'Cerrado');
+  const r2 = I.calcular(regs);
+  const n = (res) => res.porEstado.find((e) => e.estado === 'Entrega a Operaciones').n;
+  assert.equal(n(r2), n(r) + 2);
+  assert.equal(r2.base.consideradas, r.base.consideradas);
+  assert.deepEqual(r2.estadosNoListados, {});
+  // Sin la equivalencia, el estado queda sin fase y fuera de las consideradas
+  const r3 = I.calcular(I.parsearHoja(m, { equivalencias: [] }).registros);
+  assert.equal(r3.base.consideradas, r.base.consideradas - 2);
+});

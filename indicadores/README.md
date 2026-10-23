@@ -40,6 +40,9 @@ Si la hoja trae además `Responsable`, se habilita su filtro y su columna en el 
   *Cerrado* (Entrega a Operaciones, Entrega, CIERRE en Desarrollo o Solución, Cierre, Garantía HU) y
   *Excluido* (Nuevo / Identificado, Asignación).
 - Tipos de Solicitud: Mejora Funcional, Deuda Tecnica, Desarrollo Contratado, Garantía y Sin clasificar (vacío).
+- **Estados equivalentes** (editables en Configuración): un estado del ERP que no está en la tabla de fases se puede
+  contar como otro. Por defecto, cualquier estado que coincida con `Entrega*cliente*` (Entrega a Clientes,
+  Entrega clientes…) se suma a **Entrega a Operaciones**. En el detalle de HU se ve el estado original del ERP.
 - **En flujo** se deriva de la fase: *Cerrado* si la fase es Cerrado, *Abierto* en otro caso.
 - **HU consideradas** = HU únicas cuya fase no es Excluido. Un estado que no esté en la tabla queda fuera y la app lo advierte.
 - KPIs:

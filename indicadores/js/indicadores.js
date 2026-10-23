@@ -42,6 +42,12 @@
   var SIN_CLASIFICAR = 'Sin clasificar';
 
   // Parámetros de Datos Indicadores (columna J y celdas de entrada)
+  // Estados equivalentes (editable en Configuración): el estado del ERP que
+  // coincide con el patrón se cuenta como el estado destino. Admite * y ?.
+  var EQUIVALENCIAS = [
+    ['Entrega*cliente*', 'Entrega a Operaciones']
+  ];
+
   var PARAMETROS = {
     tipoExcluidoBacklog: 'Deuda Tecnica', // J55
     marcaAlcance: 'Cambio de Alcance',    // J58
@@ -190,6 +196,15 @@
     return SIN_MODULO;
   }
 
+  /** Estado con el que se cuenta la HU: el propio si tiene fase; si no, el de la primera equivalencia que coincida. */
+  function estadoEquivalente(estado, equivalencias, fases) {
+    if (fases && fases.hasOwnProperty(estado)) return estado;
+    for (var i = 0; i < equivalencias.length; i++) {
+      if (texto(equivalencias[i][0]) && coincideCriterio(estado, equivalencias[i][0])) return texto(equivalencias[i][1]);
+    }
+    return estado;
+  }
+
   function mapaFases(estados) {
     var m = {};
     (estados || ESTADOS).forEach(function (e) { m[texto(e[0])] = texto(e[1]); });
@@ -207,6 +222,7 @@
     opciones = opciones || {};
     var palabras = opciones.palabras || PALABRAS_CLAVE;
     var fases = mapaFases(opciones.estados);
+    var equivalencias = opciones.equivalencias || EQUIVALENCIAS;
     var enc = detectarEncabezados(matriz);
     if (!enc) throw new Error('No se encontró la fila de encabezados (se esperan columnas "ID" y "Estado").');
     var m = enc.mapa;
@@ -222,7 +238,8 @@
       vistos[id] = true;
       var get = function (campo) { return m[campo] === undefined ? '' : fila[m[campo]]; };
       var fin = parseFecha(get('fechaFin'));
-      var estado = texto(get('estado'));
+      var estadoOriginal = texto(get('estado'));
+      var estado = estadoEquivalente(estadoOriginal, equivalencias, fases);
       var fase = fases.hasOwnProperty(estado) ? fases[estado] : SIN_MAPEAR;
       var considerada = fase !== EXCLUIDO && fase !== SIN_MAPEAR;
       var registro = {
@@ -231,6 +248,7 @@
         tipo: texto(get('tipo')),
         cliente: texto(get('cliente')) || SIN_CLIENTE,
         estado: estado,
+        estadoOriginal: estadoOriginal,
         fase: fase,
         considerada: considerada,
         enFlujo: considerada ? (fase === 'Cerrado' ? 'Cerrado' : 'Abierto') : '',
@@ -470,7 +488,7 @@
   }
 
   return {
-    ESTADOS: ESTADOS, FASES: FASES, TIPOS_SOLICITUD: TIPOS_SOLICITUD, KPIS: KPIS, PARAMETROS: PARAMETROS,
+    ESTADOS: ESTADOS, EQUIVALENCIAS: EQUIVALENCIAS, FASES: FASES, TIPOS_SOLICITUD: TIPOS_SOLICITUD, KPIS: KPIS, PARAMETROS: PARAMETROS,
     PALABRAS_CLAVE: PALABRAS_CLAVE, EXCLUIDO: EXCLUIDO, SIN_MAPEAR: SIN_MAPEAR, SIN_MODULO: SIN_MODULO, SIN_SPRINT: SIN_SPRINT,
     parseFecha: parseFecha, parsearHoja: parsearHoja, asignarModulo: asignarModulo, calcular: calcular,
     evaluar: evaluar, coincideCriterio: coincideCriterio, compararHU: compararHU
