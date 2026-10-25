@@ -16,6 +16,7 @@
     avGrupo: leer('avGrupo', 'porCliente'),
     informes: [],
     informeId: null,
+    seleccion: {},
     cache: {},
     versionConfig: 0,
     comp: { a: null, b: null, tipo: 'todos', kpi: leer('compKpi', 'backlog') },
@@ -1107,18 +1108,41 @@
       $('#hist-nota').textContent = (ok
         ? 'Los informes se guardan en este navegador. Para usarlos en otro equipo, exporta el histórico e impórtalo allá. '
         : 'Este navegador no permite guardar datos: el histórico se perderá al cerrar la página. Exporta el histórico para conservarlo. ') +
-        'Una HU retirada es la que ya no aparece entre las consideradas del informe posterior.';
+        'Eliminar un archivo lo quita de la app en este navegador; el Excel original no se modifica.';
     });
-    $('#t-informes-tabla').innerHTML = '<thead><tr><th>Fecha de corte</th><th>Nombre</th><th>Archivo</th><th>Cargado</th><th class="num">HU únicas</th><th></th></tr></thead><tbody>' +
+    // Limpia de la selección los informes que ya no existen
+    Object.keys(estado.seleccion).forEach(function (id) { if (!lista.some(function (i) { return i.id === id; })) delete estado.seleccion[id]; });
+    var nSel = Object.keys(estado.seleccion).length;
+    var todos = lista.length && nSel === lista.length;
+    $('#t-informes-tabla').innerHTML = '<thead><tr><th class="sel"><input type="checkbox" id="sel-todos" aria-label="Seleccionar todos los archivos"' +
+      (todos ? ' checked' : '') + (lista.length ? '' : ' disabled') + '></th><th>Fecha de corte</th><th>Nombre</th><th>Archivo</th><th>Cargado</th><th class="num">HU únicas</th><th></th></tr></thead><tbody>' +
       (lista.length ? lista.map(function (i) {
         var actual = i.id === estado.informeId;
         return '<tr' + (actual ? ' class="actual"' : '') + '>' +
+          '<td class="sel"><input type="checkbox" data-inf-sel="' + esc(i.id) + '"' + (estado.seleccion[i.id] ? ' checked' : '') + ' aria-label="Seleccionar ' + esc(i.nombre) + '"></td>' +
           '<td><input type="date" data-inf-corte="' + esc(i.id) + '" value="' + esc(i.corte || '') + '" aria-label="Fecha de corte"></td>' +
           '<td><input type="text" data-inf-nombre="' + esc(i.id) + '" value="' + esc(i.nombre) + '" aria-label="Nombre del informe"></td>' +
           '<td>' + esc(i.archivo) + '</td><td>' + esc(new Date(i.cargado).toLocaleDateString('es-CO')) + '</td><td class="num">' + fmtNum.format(i.hu || 0) + '</td>' +
           '<td class="acciones-fila">' + (actual ? '<span class="chip">En pantalla</span>' : '<button class="btn-texto" type="button" data-inf-ver="' + esc(i.id) + '">Ver</button>') +
           '<button class="btn-texto peligro" type="button" data-inf-borrar="' + esc(i.id) + '">Eliminar</button></td></tr>';
-      }).join('') : '<tr><td colspan="6">Aún no hay informes guardados.</td></tr>') + '</tbody>';
+      }).join('') : '<tr><td colspan="7">No hay archivos cargados. Usa Cargar otro Excel para agregar uno.</td></tr>') + '</tbody>';
+    actualizarSeleccion();
+  }
+
+  // Sincroniza contador, botones y casilla general sin redibujar la tabla (conserva el foco)
+  function actualizarSeleccion() {
+    var lista = estado.informes;
+    var nSel = Object.keys(estado.seleccion).length;
+    $('#arch-seleccion').textContent = nSel ? nSel + (nSel === 1 ? ' archivo seleccionado' : ' archivos seleccionados') : 'Ningún archivo seleccionado';
+    $('#btn-borrar-sel').disabled = !nSel;
+    $('#btn-borrar-sel').textContent = nSel ? 'Eliminar seleccionados (' + nSel + ')' : 'Eliminar seleccionados';
+    $('#btn-borrar-todos').disabled = !lista.length;
+    var todos = $('#sel-todos');
+    if (todos) {
+      todos.checked = !!lista.length && nSel === lista.length;
+      todos.indeterminate = nSel > 0 && nSel < lista.length;
+    }
+    $$('[data-inf-sel]').forEach(function (c) { c.checked = !!estado.seleccion[c.getAttribute('data-inf-sel')]; });
   }
 
   function cambiarInforme(id, cambios) {
@@ -1129,19 +1153,27 @@
     }).catch(function (err) { toast(err.message); });
   }
 
-  function borrarInforme(id) {
-    var inf = estado.informes.find(function (i) { return i.id === id; });
-    if (!inf || !window.confirm('¿Eliminar el informe del ' + fechaCorte(inf.corte) + ' (' + inf.nombre + ')? Esta acción no se puede deshacer.')) return;
-    delete estado.cache[id];
-    Historico.eliminar(id).then(refrescarInformes).then(function (lista) {
-      toast('Informe eliminado');
-      if (id !== estado.informeId) { actualizar(); return; }
-      if (lista.length) { mostrarInforme(lista[0]); return; }
-      estado.informeId = null;
-      try { localStorage.removeItem(CLAVE + 'informeActual'); localStorage.removeItem(CLAVE + 'datos'); } catch (e) { /* */ }
-      $('#app').hidden = true;
-      $('#zona-carga').hidden = false;
-    });
+  function borrarInforme(id) { borrarInformes([id]); }
+
+  /** Elimina uno o varios archivos cargados del histórico (pide confirmación). */
+  function borrarInformes(ids) {
+    var aBorrar = estado.informes.filter(function (i) { return ids.indexOf(i.id) !== -1; });
+    if (!aBorrar.length) return;
+    var texto = aBorrar.length === 1
+      ? '¿Eliminar el archivo del ' + fechaCorte(aBorrar[0].corte) + ' (' + aBorrar[0].nombre + ')?'
+      : '¿Eliminar ' + aBorrar.length + ' archivos cargados' + (aBorrar.length === estado.informes.length ? ' (todos)' : '') + '?';
+    if (!window.confirm(texto + ' Se borran de este navegador y no se puede deshacer. Si los necesitas después, exporta el histórico antes.')) return;
+    var borraActual = aBorrar.some(function (i) { return i.id === estado.informeId; });
+    Promise.all(aBorrar.map(function (i) { delete estado.cache[i.id]; delete estado.seleccion[i.id]; return Historico.eliminar(i.id); }))
+      .then(refrescarInformes).then(function (lista) {
+        toast(aBorrar.length === 1 ? 'Archivo eliminado' : aBorrar.length + ' archivos eliminados');
+        if (!borraActual) { actualizar(); return; }
+        if (lista.length) { mostrarInforme(lista[0]); return; }
+        estado.informeId = null;
+        try { localStorage.removeItem(CLAVE + 'informeActual'); localStorage.removeItem(CLAVE + 'datos'); } catch (e) { /* */ }
+        $('#app').hidden = true;
+        $('#zona-carga').hidden = false;
+      }).catch(function (err) { toast('No se pudo eliminar: ' + err.message); });
   }
 
   function exportarHistorico() {
@@ -1404,6 +1436,11 @@
       var inf = estado.informes.find(function (i) { return i.id === bt.getAttribute('data-corte'); });
       if (inf && inf.id !== estado.informeId) mostrarInforme(inf);
     });
+    var irArchivos = function () { $('.tabs [data-tab="archivos"]').click(); window.scrollTo(0, 0); };
+    $('#btn-ir-archivos').addEventListener('click', irArchivos);
+    $('[data-ir-archivos]').addEventListener('click', irArchivos);
+    $('#btn-borrar-sel').addEventListener('click', function () { borrarInformes(Object.keys(estado.seleccion)); });
+    $('#btn-borrar-todos').addEventListener('click', function () { borrarInformes(estado.informes.map(function (i) { return i.id; })); });
     $('#btn-ir-comparar').addEventListener('click', function () { $('.tabs [data-tab="comparativo"]').click(); window.scrollTo(0, 0); });
     $('#btn-ultimo').addEventListener('click', function () { if (estado.informes[0]) mostrarInforme(estado.informes[0]); });
     $('#comp-a').addEventListener('change', function (e) { estado.comp.a = e.target.value; renderComparativo(); });
@@ -1418,6 +1455,15 @@
     });
     $('#t-informes-tabla').addEventListener('change', function (e) {
       var t = e.target;
+      if (t.id === 'sel-todos') {
+        estado.seleccion = {};
+        if (t.checked) estado.informes.forEach(function (i) { estado.seleccion[i.id] = true; });
+        actualizarSeleccion(); return;
+      }
+      if (t.hasAttribute('data-inf-sel')) {
+        if (t.checked) estado.seleccion[t.getAttribute('data-inf-sel')] = true; else delete estado.seleccion[t.getAttribute('data-inf-sel')];
+        actualizarSeleccion(); return;
+      }
       if (t.hasAttribute('data-inf-corte') && t.value) cambiarInforme(t.getAttribute('data-inf-corte'), { corte: t.value });
       if (t.hasAttribute('data-inf-nombre') && t.value.trim()) cambiarInforme(t.getAttribute('data-inf-nombre'), { nombre: t.value.trim() });
     });

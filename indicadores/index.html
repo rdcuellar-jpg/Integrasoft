@@ -21,6 +21,7 @@
         <button role="tab" data-tab="seguimiento" aria-selected="false">HU abiertas</button>
         <button role="tab" data-tab="avance" aria-selected="false">Avance por estado</button>
         <button role="tab" data-tab="comparativo" aria-selected="false">Comparativo de informes</button>
+        <button role="tab" data-tab="archivos" aria-selected="false">Archivos cargados</button>
         <button role="tab" data-tab="detalle" aria-selected="false">Detalle de HU</button>
         <button role="tab" data-tab="ficha" aria-selected="false">Ficha de indicadores</button>
         <button role="tab" data-tab="config" aria-selected="false">Configuración</button>
@@ -56,6 +57,7 @@
             <div class="sel-informe">
               <label>Informe <select id="sel-informe" aria-label="Informe que se está viendo"></select></label>
               <button class="btn btn-comparar" id="btn-ir-comparar" type="button">Comparar informes <span id="n-informes"></span></button>
+              <button class="btn btn-texto" id="btn-ir-archivos" type="button">Administrar archivos</button>
             </div>
             <p class="fuente" aria-live="polite"><span id="fuente-info"></span> <span id="fuente-alertas"></span></p>
             <p class="aviso-corte" id="aviso-corte" hidden>
@@ -307,16 +309,27 @@
         </section>
       </div>
 
-      <section class="bloque" aria-labelledby="t-informes">
+      <p class="nota comp-admin">Para renombrar, cambiar la fecha de corte o eliminar archivos, ve a <button class="btn-texto" type="button" data-ir-archivos>Archivos cargados</button>.</p>
+    </section>
+
+    <!-- ARCHIVOS CARGADOS -->
+    <section class="panel" data-panel="archivos" hidden>
+      <section class="bloque arch" aria-labelledby="t-informes">
         <div class="bloque-cab">
-          <h2 id="t-informes">Informes guardados</h2>
+          <h2 id="t-informes">Archivos cargados</h2>
           <div class="zona-botones">
+            <label class="btn btn-primario" for="archivo">Cargar otro Excel</label>
             <button class="btn" id="btn-exportar-hist" type="button">Exportar histórico</button>
             <label class="btn" for="importar-hist">Importar histórico</label>
             <input id="importar-hist" type="file" accept=".json,application/json" hidden>
           </div>
         </div>
         <p class="nota" id="hist-nota"></p>
+        <div class="arch-barra">
+          <span id="arch-seleccion">Ningún archivo seleccionado</span>
+          <button class="btn btn-peligro" id="btn-borrar-sel" type="button" disabled>Eliminar seleccionados</button>
+          <button class="btn btn-texto peligro" id="btn-borrar-todos" type="button">Eliminar todos</button>
+        </div>
         <div class="tabla-scroll"><table class="tabla" id="t-informes-tabla"></table></div>
       </section>
     </section>
