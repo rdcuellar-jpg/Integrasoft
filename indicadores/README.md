@@ -69,8 +69,10 @@ la tabla de fase por estado y la tabla de palabras clave.
 
 Arriba se elige el **informe** (corte) que se quiere ver; todas las vistas muestran los indicadores de ese corte.
 
-- **Indicadores Dirección de Soluciones** (vista principal): titular con cuántos indicadores están en meta,
-  indicadores de la plantilla, distribución de HU por fase y estado, cierres por mes y HU por Tipo de Solicitud.
+- **Indicadores Dirección de Soluciones** (vista principal): panel de KPI con el título y cuántos indicadores están
+  en meta, los cortes evaluados, tarjetas de HU consideradas, abiertas, cerradas y horas, el estado de las metas con
+  el avance promedio, y gráficos de HU por Tipo de Solicitud, por fase, abiertas y cerradas, abiertas por módulo y
+  por cliente. Debajo: indicadores de la plantilla, distribución de HU por fase y estado, cierres por mes y HU por Tipo de Solicitud.
   Los indicadores se pueden ver de cuatro formas: *Tabla con meta* (barra frente a la meta), *Distancia a la meta*
   (puntos por encima o por debajo), *Por estado* (requieren atención, en meta, sin datos) y *Por cliente*
   (matriz de indicadores calculados con las HU de cada cliente).
@@ -116,7 +118,7 @@ indicadores/
 ├── js/app.js                # interfaz y gráficos
 ├── js/historico.js          # histórico de informes en el navegador (IndexedDB)
 ├── js/vendor/               # Chart.js 4.4.1 (MIT) y SheetJS 0.18.5 (Apache-2.0), locales para uso sin internet
-├── fonts/                   # Schibsted Grotesk (SIL OFL 1.1), local para uso sin internet
+├── fonts/                   # Source Serif 4 (SIL OFL 1.1) para títulos, local para uso sin internet
 ├── data/hoja1-ejemplo.json  # copia de la Hoja1 actual para el botón "Datos de ejemplo"
 └── tests/                   # pruebas que comparan contra los valores del Excel
 ```

@@ -402,15 +402,37 @@
     $('#veredicto-detalle').textContent = partes.join(' ');
 
     var excl = b.excluidos.reduce(function (s, e) { return s + e.n; }, 0) + b.sinMapear;
-    var cifras = [
+    var inf = informeActual();
+    $('#tab-seccion').textContent = 'Excelencia operativa, corte del ' + (inf ? fechaCorte(inf.corte) : fechaCorte(hoyISO()));
+
+    // Cortes evaluados (como el selector de años de la referencia)
+    $('#lista-cortes').innerHTML = estado.informes.length ? estado.informes.slice(0, 8).map(function (i) {
+      var actual = i.id === estado.informeId;
+      return '<li><button type="button" data-corte="' + esc(i.id) + '"' + (actual ? ' aria-current="true"' : '') + ' title="' + esc(i.nombre) + '">' + esc(fechaCorte(i.corte)) + '</button></li>';
+    }).join('') + (estado.informes.length > 8 ? '<li class="mas">' + (estado.informes.length - 8) + ' más en Comparativo</li>' : '')
+      : '<li class="mas">Solo este corte</li>';
+
+    // Tarjetas con cinta
+    var tarjetas = [
       ['HU consideradas', fmtNum.format(b.consideradas), 'de ' + fmtNum.format(b.total) + ' únicas; ' + fmtNum.format(excl) + ' excluidas'],
       ['HU abiertas', fmtNum.format(r.porFlujo[0].n), pct(r.porFlujo[0].pct, 0) + ' de las consideradas'],
       ['HU cerradas', fmtNum.format(r.porFlujo[1].n), pct(r.porFlujo[1].pct, 0) + ' de las consideradas'],
       ['Horas ejecutadas', fmtNum.format(r.horas.ejecutadas) + ' h', r.horas.contratadas ? 'de ' + fmtNum.format(r.horas.contratadas) + ' h contratadas' : 'sin horas contratadas']
     ];
-    $('#cifras').innerHTML = cifras.map(function (c) {
-      return '<div title="' + esc(c[2]) + '"><dt>' + esc(c[0]) + '</dt><dd>' + esc(c[1]) + '</dd></div>';
+    $('#kpis-cinta').innerHTML = tarjetas.map(function (t) {
+      return '<div class="caja t-kpi"><span class="cinta">' + esc(t[0]) + '</span><b>' + esc(t[1]) + '</b><small>' + esc(t[2]) + '</small></div>';
     }).join('');
+
+    // Estado de las metas (como la columna lateral de la referencia)
+    var av = estado.avance;
+    var fila = function (clase, icono, etiqueta, n) {
+      return '<div class="m-fila ' + clase + '">' + ICONOS[icono] + '<div><span>' + esc(etiqueta) + '</span><b>' + n + ' de ' + plantilla.length + '</b></div></div>';
+    };
+    $('#t-metas').innerHTML = '<p class="m-sub">Indicadores de la plantilla</p>' +
+      fila('en-meta', 'EN META', 'En meta', enMeta.length) +
+      fila('fuera', 'FUERA DE META', 'Fuera de meta', fuera.length) +
+      fila('', 'SIN DATOS', 'Sin datos', sinDatos.length) +
+      '<div class="m-grande"><span>Avance promedio</span><b>' + (av ? pct(av.promedio) : 'N/D') + '</b></div>';
   }
 
   var ICONOS = {
@@ -714,23 +736,81 @@
       return '<option value="' + a + '"' + (a === r.anio ? ' selected' : '') + '>' + a + '</option>';
     }).join('') + '<option value="todos"' + (r.anio ? '' : ' selected') + '>Todos</option>';
 
-    var ct = colorTipo(c);
-    grafico('g-tipo', {
+    // ---- Tablero (estilo de la referencia: barras azul marino, dona azul y coral) ----
+    var navy = cssVar('--navy'), coral = cssVar('--coral');
+    var sinGrid = function (horizontal) {
+      var e = ejeValores(c, horizontal);
+      (horizontal ? e.x : e.y).grid = { display: false };
+      (horizontal ? e.x : e.y).border = { color: c.grid };
+      return e;
+    };
+    var barrasH = function (id, filas, extraTooltip) {
+      document.getElementById(id).parentNode.style.height = Math.max(200, filas.length * 30 + 50) + 'px';
+      grafico(id, {
+        type: 'bar',
+        data: { labels: filas.map(function (f) { return f.nombre; }), datasets: [barra(c, navy, { label: 'HU', data: filas.map(function (f) { return f.n; }), borderRadius: 1, maxBarThickness: 16 })] },
+        options: {
+          indexAxis: 'y', scales: sinGrid(true), layout: { padding: { right: 64 } },
+          plugins: {
+            legend: { display: false },
+            etiquetasTotales: { activo: true, formato: function (v, i) { return extraTooltip ? extraTooltip(v, i) : String(v); } },
+            tooltip: { callbacks: { label: function (it) { return ' ' + it.raw + ' HU'; } } }
+          }
+        },
+        plugins: [etiquetasTotales]
+      });
+    };
+
+    barrasH('g-tipo', r.porTipo.filter(function (t) { return t.n; }).sort(function (x, y) { return y.n - x.n; }), function (v) {
+      return v + ' (' + pct(r.base.consideradas ? v / r.base.consideradas : 0) + ')';
+    });
+
+    grafico('g-fase', {
       type: 'bar',
-      data: {
-        labels: r.porTipo.map(function (t) { return t.nombre; }),
-        datasets: [barra(c, r.porTipo.map(function (t) { return ct[t.nombre]; }), { label: 'HU', data: r.porTipo.map(function (t) { return t.n; }) })]
-      },
+      data: { labels: r.porFase.map(function (f) { return f.fase; }), datasets: [barra(c, navy, { label: 'HU', data: r.porFase.map(function (f) { return f.n; }), borderRadius: 1, maxBarThickness: 56, categoryPercentage: 0.8 })] },
       options: {
-        indexAxis: 'y', scales: ejeValores(c, true), layout: { padding: { right: 78 } },
+        scales: sinGrid(false), layout: { padding: { top: 22 } },
         plugins: {
           legend: { display: false },
-          etiquetasTotales: { activo: true, formato: function (v, i) { return v + ' (' + pct(r.porTipo[i].pct) + ')'; } },
-          tooltip: { callbacks: { label: function (it) { return ' ' + it.raw + ' HU (' + pct(r.porTipo[it.dataIndex].pct) + ')'; } } }
+          etiquetasTotales: { activo: true },
+          tooltip: { callbacks: { label: function (it) { return ' ' + it.raw + ' HU (' + pct(r.porFase[it.dataIndex].pct) + ')'; } } }
         }
       },
       plugins: [etiquetasTotales]
     });
+
+    var flujo = r.porFlujo;
+    grafico('g-flujo', {
+      type: 'doughnut',
+      data: { labels: ['Abiertas', 'Cerradas'], datasets: [{ data: flujo.map(function (f) { return f.n; }), backgroundColor: [coral, navy], borderColor: c.superficie, borderWidth: 2, hoverOffset: 4 }] },
+      options: {
+        cutout: '55%', layout: { padding: 6 },
+        plugins: {
+          legend: { position: 'bottom', labels: { generateLabels: function (ch) {
+            var base = Chart.overrides.doughnut.plugins.legend.labels.generateLabels(ch);
+            base.forEach(function (l, i) { l.text = (i ? 'Cerradas ' : 'Abiertas ') + pct(flujo[i].pct) + ' (' + flujo[i].n + ')'; });
+            return base;
+          } } },
+          tooltip: { callbacks: { label: function (it) { return ' ' + it.label + ': ' + it.raw + ' HU (' + pct(flujo[it.dataIndex].pct) + ')'; } } }
+        }
+      }
+    });
+
+    var modulos = estado.resultado.seguimiento.porModulo.map(function (f) { return { nombre: f.nombre, n: f.total }; });
+    document.getElementById('g-modulo').parentNode.style.height = '300px';
+    grafico('g-modulo', {
+      type: 'bar',
+      data: { labels: modulos.map(function (f) { return f.nombre; }), datasets: [barra(c, navy, { label: 'HU abiertas', data: modulos.map(function (f) { return f.n; }), borderRadius: 1, maxBarThickness: 18 })] },
+      options: {
+        scales: Object.assign(sinGrid(false), { x: { grid: { display: false }, border: { color: c.grid }, ticks: { maxRotation: 45, minRotation: 45, autoSkip: false, callback: etiquetaCorta } } }),
+        layout: { padding: { top: 18 } },
+        plugins: { legend: { display: false }, etiquetasTotales: { activo: true }, tooltip: { callbacks: { label: function (it) { return ' ' + it.raw + ' HU abiertas'; } } } }
+      },
+      plugins: [etiquetasTotales]
+    });
+
+    var clientes = (estado.avance ? estado.avance.porCliente : []).slice(0, 10).map(function (f) { return { nombre: f.nombre, n: f.n }; });
+    barrasH('g-cliente', clientes);
   }
 
   function tablaCruzada(id, filas, totalAbiertas, etiqueta) {
@@ -1318,6 +1398,11 @@
     $('#sel-informe').addEventListener('change', function (e) {
       var inf = estado.informes.find(function (i) { return i.id === e.target.value; });
       if (inf) mostrarInforme(inf);
+    });
+    $('#lista-cortes').addEventListener('click', function (e) {
+      var bt = e.target.closest('[data-corte]'); if (!bt) return;
+      var inf = estado.informes.find(function (i) { return i.id === bt.getAttribute('data-corte'); });
+      if (inf && inf.id !== estado.informeId) mostrarInforme(inf);
     });
     $('#btn-ir-comparar').addEventListener('click', function () { $('.tabs [data-tab="comparativo"]').click(); window.scrollTo(0, 0); });
     $('#btn-ultimo').addEventListener('click', function () { if (estado.informes[0]) mostrarInforme(estado.informes[0]); });
