@@ -79,12 +79,50 @@
 
         <!-- RESUMEN -->
         <section class="panel" data-panel="dashboard">
-          <div class="veredicto">
-            <div>
-              <h1 id="veredicto"></h1>
-              <p id="veredicto-detalle"></p>
+          <header class="tab-cab">
+            <h1>Indicadores Dirección de Soluciones</h1>
+            <p><span id="veredicto"></span>. <span id="veredicto-detalle"></span></p>
+          </header>
+          <h2 class="tab-seccion" id="tab-seccion"></h2>
+
+          <div class="tablero">
+            <div class="tablero-principal">
+              <div class="tablero-fila1">
+                <nav class="caja t-cortes" aria-labelledby="t-cortes-titulo">
+                  <h3 id="t-cortes-titulo">Cortes evaluados</h3>
+                  <ul id="lista-cortes"></ul>
+                </nav>
+                <div class="t-kpis" id="kpis-cinta"></div>
+              </div>
+              <div class="tablero-fila2">
+                <section class="caja panel-g" aria-labelledby="t-g-tipo">
+                  <h3 id="t-g-tipo">HU por Tipo de Solicitud</h3>
+                  <div class="lienzo lienzo-t"><canvas id="g-tipo" aria-label="HU por Tipo de Solicitud"></canvas></div>
+                </section>
+                <section class="caja panel-g" aria-labelledby="t-g-fase">
+                  <h3 id="t-g-fase">HU por fase</h3>
+                  <div class="lienzo lienzo-t"><canvas id="g-fase" aria-label="HU por fase"></canvas></div>
+                </section>
+                <section class="caja panel-g" aria-labelledby="t-g-flujo">
+                  <h3 id="t-g-flujo">HU abiertas y cerradas</h3>
+                  <div class="lienzo lienzo-t"><canvas id="g-flujo" aria-label="HU abiertas y cerradas"></canvas></div>
+                </section>
+              </div>
             </div>
-            <dl class="cifras" id="cifras"></dl>
+            <aside class="caja t-metas" aria-labelledby="t-metas-titulo">
+              <span class="cinta" id="t-metas-titulo">Estado de las metas</span>
+              <div id="t-metas"></div>
+            </aside>
+            <div class="tablero-fila3">
+              <section class="caja panel-g" aria-labelledby="t-g-modulo">
+                <h3 id="t-g-modulo">HU abiertas por módulo</h3>
+                <div class="lienzo lienzo-t"><canvas id="g-modulo" aria-label="HU abiertas por módulo"></canvas></div>
+              </section>
+              <section class="caja panel-g" aria-labelledby="t-g-cliente">
+                <h3 id="t-g-cliente">HU consideradas por cliente</h3>
+                <div class="lienzo lienzo-t"><canvas id="g-cliente" aria-label="HU consideradas por cliente"></canvas></div>
+              </section>
+            </div>
           </div>
 
           <section class="bloque" aria-labelledby="t-plantilla">
@@ -111,7 +149,7 @@
             <div class="pipeline" id="pipeline"></div>
           </section>
 
-          <div class="dupla">
+          <div class="dupla dupla-uno">
             <section class="bloque" aria-labelledby="t-mensual">
               <div class="bloque-cab">
                 <h2 id="t-mensual">Cierres por mes de finalización</h2>
@@ -120,10 +158,7 @@
               <div class="lienzo"><canvas id="g-mensual" aria-label="HU cerradas y abiertas por mes de finalización"></canvas></div>
               <p class="nota" id="nota-mensual"></p>
             </section>
-            <section class="bloque" aria-labelledby="t-tipo">
-              <h2 id="t-tipo">Tipo de Solicitud</h2>
-              <div class="lienzo"><canvas id="g-tipo" aria-label="HU por Tipo de Solicitud"></canvas></div>
-            </section>
+
           </div>
         </section>
 
