@@ -99,9 +99,11 @@ Arriba se elige el **informe** (corte) que se quiere ver; todas las vistas muest
   - la evolución de un indicador en todos los informes guardados, ordenados por fecha de corte, con la meta;
   - las HU que cambiaron entre los dos cortes: nuevas, cerradas, reabiertas, con cambio de estado y retiradas
     (las que ya no aparecen entre las consideradas del informe posterior).
-  Los filtros activos y la configuración actual se aplican a los dos informes. Al final está la lista de
-  **informes guardados**, donde se cambia el nombre o la fecha de corte, se abre o se elimina cada informe,
-  y se puede **exportar o importar el histórico** (archivo JSON) para llevarlo a otro equipo o respaldarlo.
+  Los filtros activos y la configuración actual se aplican a los dos informes.
+- **Archivos cargados**: lista de los Excel guardados en el navegador. Permite cambiar el nombre o la fecha de corte,
+  abrir un archivo, **eliminar** uno, varios (con las casillas y *Eliminar seleccionados*) o todos, y
+  **exportar o importar el histórico** (archivo JSON) para llevarlo a otro equipo o respaldarlo. Eliminar pide
+  confirmación y no modifica el Excel original. También se llega con *Administrar archivos* en el encabezado.
 - **Seguimiento HU abiertas**: HU abiertas por Cliente, Sprint, Módulo y Asignado a, cruzadas por Tipo de Solicitud.
 - **Detalle HU**: listado con búsqueda, filtros, orden por columna y exportación a CSV.
 - **Ficha de indicadores**: definición, fórmula, frecuencia, meta, responsable y resultado actual.
