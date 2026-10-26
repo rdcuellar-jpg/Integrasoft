@@ -30,7 +30,7 @@ La fila de encabezados se detecta automáticamente (en la base actual es la fila
 *Paquetes de trabajo* (el bloque *Relaciones* repite encabezados y se ignora):
 
 `ID`, `Asunto`, `Sprint`, `Tipo`, `Tipo de Solicitud`, `Cliente`, `Estado`, `Trabajo`, `Trabajo total`, `Asignado a`,
-`Fecha de inicio`, `Fecha de finalización` (dd-mm-aaaa o fecha de Excel) y `Precisión HU`.
+`Fecha de inicio`, `Fecha de finalización` (dd-mm-aaaa o fecha de Excel), `Precisión HU` y `Módulo afectado`.
 Si la hoja trae además `Responsable`, se habilita su filtro y su columna en el detalle.
 
 ## Reglas de cálculo (igual que las hojas Base Calculo y Datos Indicadores)
@@ -59,11 +59,13 @@ Si la hoja trae además `Responsable`, se habilita su filtro y su columna en el 
   | % HU en Análisis / Desarrollo / Pruebas | HU en la fase / HU consideradas | sin meta |
   | % HU Abiertas | HU con En flujo = Abierto / HU consideradas | sin meta |
 - El gráfico mensual muestra el año elegido (por defecto el actual); las HU sin fecha o fuera del año se informan en la nota.
-- El **módulo** se asigna por palabra clave en el Asunto (primera coincidencia de arriba hacia abajo).
+- El **módulo** se toma de la columna `Módulo afectado` del Excel (sin distinguir mayúsculas ni tildes; si no
+  existe, de la columna `Módulo`). Las HU sin módulo, o los archivos sin esa columna, quedan como
+  *Sin módulo identificado*, y la app avisa cuando el archivo no trae la columna.
 
 En la pestaña **Configuración** se editan, y quedan guardados en el navegador: las metas, los parámetros
 (horas contratadas, Tipo de Solicitud excluido del cumplimiento, marcas de Precisión HU con comodines `*` y `?`),
-la tabla de fase por estado y la tabla de palabras clave.
+la tabla de fase por estado, el avance por estado y los estados equivalentes.
 
 ## Vistas
 

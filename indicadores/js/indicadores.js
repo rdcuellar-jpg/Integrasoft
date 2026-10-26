@@ -71,25 +71,6 @@
     horasContratadas: null,               // C56
     anio: null                            // E65 (null = año actual)
   };
-
-  // Tabla de módulos por palabra clave (Indicadores Seguimiento!J6:K60).
-  // Se aplica la primera coincidencia de arriba hacia abajo.
-  var PALABRAS_CLAVE = [
-    ['contabilidad -', 'Contabilidad'], ['cesantias', 'Nómina'], ['nomina', 'Nómina'],
-    ['nómina', 'Nómina'], ['viaticos', 'Nómina'], ['horas extras', 'Nómina'],
-    ['parafiscales', 'Nómina'], ['vacaciones', 'Nómina'], ['salvamento', 'Activos fijos'],
-    ['activos', 'Activos fijos'], ['tesorer', 'Tesorería'], ['retenciones bancarias', 'Tesorería'],
-    ['caja menor', 'Tesorería'], ['controlblue', 'ControlBlue / Órdenes de trabajo'],
-    ['ordenes de trabajo', 'ControlBlue / Órdenes de trabajo'], ['cdp', 'Presupuesto'],
-    ['cufe', 'Facturación y Liquidaciones'], ['nota crédito', 'Facturación y Liquidaciones'],
-    ['factura', 'Facturación y Liquidaciones'], ['liquidac', 'Facturación y Liquidaciones'],
-    ['predial', 'Facturación y Liquidaciones'], ['presupuesto', 'Presupuesto'],
-    ['documentos compra', 'Compras'], ['las OPS', 'Contratación'], ['contab', 'Contabilidad'],
-    ['libro auxiliar', 'Contabilidad'], ['plan de cuentas', 'Contabilidad'],
-    ['nota de cierre', 'Contabilidad'], ['el iva', 'Contabilidad'],
-    ['elaboracion de documentos', 'Contabilidad'], ['ctos automaticos', 'Contabilidad']
-  ];
-
   // KPIs (Datos Indicadores!A54:I63 + Ficha de Indicadores)
   var KPIS = [
     { id: 'deuda', nombre: '% Deuda técnica / backlog total', meta: 0.20, tipoMeta: '<=', grupo: 'plantilla',
@@ -140,8 +121,15 @@
     id: 'ID', asunto: 'Asunto', sprint: 'Sprint', tipo: 'Tipo', tipoSolicitud: 'Tipo de Solicitud',
     cliente: 'Cliente', estado: 'Estado', trabajo: 'Trabajo', trabajoTotal: 'Trabajo total',
     asignado: 'Asignado a', fechaInicio: 'Fecha de inicio', fechaFin: 'Fecha de finalización',
-    precision: 'Precisión HU', responsable: 'Responsable'
+    precision: 'Precisión HU', responsable: 'Responsable',
+    // El módulo viene de la columna "Módulo afectado" del ERP (si no está, se acepta "Módulo")
+    modulo: ['Módulo afectado', 'Módulo']
   };
+
+  /** Texto sin tildes y en minúsculas, para comparar encabezados. */
+  function sinTildes(s) {
+    return texto(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+  }
 
   function texto(v) {
     if (v === null || v === undefined) return '';
@@ -191,25 +179,20 @@
   function detectarEncabezados(matriz) {
     for (var r = 0; r < Math.min(matriz.length, 20); r++) {
       var fila = matriz[r] || [];
-      var mapa = {};
+      var mapa = {}, rango = {};
       for (var c = 0; c < fila.length; c++) {
-        var h = texto(fila[c]);
+        var h = sinTildes(fila[c]);
+        if (!h) continue;
         for (var campo in COLUMNAS) {
-          if (h === COLUMNAS[campo] && mapa[campo] === undefined) mapa[campo] = c;
+          var alias = [].concat(COLUMNAS[campo]).map(sinTildes);
+          var k = alias.indexOf(h);
+          // Primera columna con ese nombre; entre alias, gana el de mayor prioridad
+          if (k !== -1 && (mapa[campo] === undefined || k < rango[campo])) { mapa[campo] = c; rango[campo] = k; }
         }
       }
       if (mapa.id !== undefined && mapa.estado !== undefined) return { fila: r, mapa: mapa };
     }
     return null;
-  }
-
-  function asignarModulo(asunto, palabras) {
-    var a = normalizar(asunto);
-    for (var i = 0; i < palabras.length; i++) {
-      var kw = normalizar(palabras[i][0]);
-      if (kw && a.indexOf(kw) !== -1) return palabras[i][1];
-    }
-    return SIN_MODULO;
   }
 
   /** Estado con el que se cuenta la HU: el propio si tiene fase; si no, el de la primera equivalencia que coincida. */
@@ -231,12 +214,11 @@
    * Convierte la matriz de la Hoja1 (array de arrays) en registros únicos de HU.
    * La base repite la HU por cada relación: se toma la primera aparición del ID
    * (equivalente a Base Calculo!B "Única").
-   * @param opciones { palabras, estados } (también acepta solo el array de palabras)
+   * @param opciones { estados, equivalencias }
    */
   function parsearHoja(matriz, opciones) {
-    if (Array.isArray(opciones)) opciones = { palabras: opciones };
+    if (Array.isArray(opciones)) opciones = {};
     opciones = opciones || {};
-    var palabras = opciones.palabras || PALABRAS_CLAVE;
     var fases = mapaFases(opciones.estados);
     var equivalencias = opciones.equivalencias || EQUIVALENCIAS;
     var enc = detectarEncabezados(matriz);
@@ -280,7 +262,7 @@
         precision: texto(get('precision')),
         fila: r + 1
       };
-      registro.modulo = asignarModulo(registro.asunto, palabras);
+      registro.modulo = texto(get('modulo')) || SIN_MODULO;
       registros.push(registro);
     }
     var columnas = {};
@@ -585,8 +567,8 @@
   return {
     AVANCE: AVANCE, tablaAvance: tablaAvance, avanceHU: avanceHU, calcularAvance: calcularAvance,
     ESTADOS: ESTADOS, EQUIVALENCIAS: EQUIVALENCIAS, FASES: FASES, TIPOS_SOLICITUD: TIPOS_SOLICITUD, KPIS: KPIS, PARAMETROS: PARAMETROS,
-    PALABRAS_CLAVE: PALABRAS_CLAVE, EXCLUIDO: EXCLUIDO, SIN_MAPEAR: SIN_MAPEAR, SIN_MODULO: SIN_MODULO, SIN_SPRINT: SIN_SPRINT,
-    parseFecha: parseFecha, parsearHoja: parsearHoja, asignarModulo: asignarModulo, calcular: calcular,
+    EXCLUIDO: EXCLUIDO, SIN_MAPEAR: SIN_MAPEAR, SIN_MODULO: SIN_MODULO, SIN_SPRINT: SIN_SPRINT,
+    parseFecha: parseFecha, parsearHoja: parsearHoja, calcular: calcular,
     evaluar: evaluar, coincideCriterio: coincideCriterio, compararHU: compararHU
   };
 });
