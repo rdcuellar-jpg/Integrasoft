@@ -736,3 +736,4 @@ main { max-width: 1360px; margin: 0 auto; padding: 18px 28px 56px; }
 :root[data-theme="dark"] .btn-peligro { color: #11151c; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn-peligro { color: #11151c; } }
 [data-panel="archivos"] .arch { margin-top: 20px; }
+.aviso-info { display: block; margin-top: 4px; color: var(--text-secondary); }

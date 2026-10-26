@@ -166,7 +166,7 @@
 
     <!-- SEGUIMIENTO -->
     <section class="panel" data-panel="seguimiento" hidden>
-      <p class="intro">Solo HU con En flujo = Abierto. El módulo se asigna por palabra clave del Asunto; la tabla se edita en Configuración.</p>
+      <p class="intro">Solo HU con En flujo = Abierto. El módulo se toma de la columna Módulo afectado del Excel.</p>
       <div class="graficos">
         <figure class="tarjeta ancho">
           <figcaption>HU abiertas por Cliente y Tipo de Solicitud</figcaption>
@@ -377,12 +377,10 @@
             <button class="btn btn-primario" id="btn-guardar-equivalencias" type="button">Aplicar equivalencias</button>
           </div>
         </div>
-        <div class="tarjeta ancho">
-          <h3>Tabla de módulos por palabra clave</h3>
-          <p class="nota">Una regla por línea con el formato <code>palabra clave =&gt; Módulo</code>. Se aplica la primera coincidencia de arriba hacia abajo (sin distinguir mayúsculas).</p>
-          <textarea id="cfg-palabras" rows="14" spellcheck="false"></textarea>
+        <div class="tarjeta ancho cfg-restaurar">
+          <h3>Valores por defecto</h3>
+          <p class="nota">Vuelve a las metas, parámetros, fases, avance y equivalencias originales. No borra los archivos cargados.</p>
           <div class="zona-botones">
-            <button class="btn btn-primario" id="btn-guardar-palabras" type="button">Aplicar tabla</button>
             <button class="btn" id="btn-restaurar" type="button">Restaurar valores por defecto</button>
           </div>
         </div>

@@ -86,11 +86,12 @@ function comparar(tabla, esperadoTabla) {
   }
 }
 
-test('seguimiento HU abiertas por cliente, sprint y módulo', () => {
+test('seguimiento HU abiertas por cliente y sprint', () => {
   assert.equal(r.seguimiento.total, 35);
   comparar(r.seguimiento.porCliente, esperado.cliente);
   comparar(r.seguimiento.porSprint, esperado.sprint);
-  comparar(r.seguimiento.porModulo, esperado.modulo);
+  // El módulo ya no se calcula por palabra clave: el ejemplo no trae la columna Módulo afectado
+  assert.ok(r.seguimiento.porModulo.every((f) => f.nombre === I.SIN_MODULO));
   // Lo que el Excel no muestra: 1 HU abierta de Garantía y el SPRINT 8 UNIFICADO
   assert.equal(r.seguimiento.porCliente.reduce((s, f) => s + f['Garantía'], 0), 1);
   assert.equal(r.seguimiento.porSprint.find((f) => f.nombre === 'SPRINT 8 UNIFICADO').total, 19);
@@ -208,4 +209,25 @@ test('avance: Entrega cliente cuenta como ejecutada', () => {
   const a = I.calcularAvance(I.parsearHoja(m).registros);
   assert.equal(a.lista.find((x) => x.hu.id === id).avance, 1);
   assert.equal(a.ejecutadas, 88);
+});
+
+test('el módulo se toma de la columna Módulo afectado', () => {
+  const m = ejemplo.matriz.map((f) => f.slice());
+  m[1].push('Módulo afectado');
+  const ids = [...new Set(m.slice(2).map((f) => String(f[1])))];
+  const modulos = ['Nómina', 'Contabilidad', ''];
+  m.forEach((f, i) => { if (i > 1) f.push(modulos[ids.indexOf(String(f[1])) % 3]); });
+  const p = I.parsearHoja(m);
+  assert.ok(p.columnas.modulo);
+  const regs = p.registros;
+  assert.equal(regs.find((h) => h.id === ids[0]).modulo, 'Nómina');
+  assert.equal(regs.find((h) => h.id === ids[1]).modulo, 'Contabilidad');
+  assert.equal(regs.find((h) => h.id === ids[2]).modulo, I.SIN_MODULO);
+  const r2 = I.calcular(regs);
+  const total = r2.seguimiento.porModulo.reduce((s, f) => s + f.total, 0);
+  assert.equal(total, r2.seguimiento.total);
+  assert.equal(r2.seguimiento.porModulo[r2.seguimiento.porModulo.length - 1].nombre, I.SIN_MODULO);
+  // Encabezado sin tilde y en mayúsculas también se reconoce
+  const m2 = m.map((f) => f.slice()); m2[1][m2[1].length - 1] = 'MODULO AFECTADO';
+  assert.equal(I.parsearHoja(m2).registros.find((h) => h.id === ids[0]).modulo, 'Nómina');
 });

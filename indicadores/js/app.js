@@ -26,8 +26,7 @@
       parametros: leer('parametros', {}),
       estados: leer('estados', null) || I.ESTADOS.slice(),
       equivalencias: leer('equivalencias', null) || I.EQUIVALENCIAS.slice(),
-      avance: leer('avance', null) || JSON.parse(JSON.stringify(I.AVANCE)),
-      palabras: leer('palabras', null) || I.PALABRAS_CLAVE.slice()
+      avance: leer('avance', null) || JSON.parse(JSON.stringify(I.AVANCE))
     }
   };
 
@@ -120,7 +119,7 @@
   }
 
   function opcionesParseo() {
-    return { palabras: estado.config.palabras, estados: estado.config.estados, equivalencias: estado.config.equivalencias };
+    return { estados: estado.config.estados, equivalencias: estado.config.equivalencias };
   }
 
   function reparsear() {
@@ -371,9 +370,11 @@
       (filtros ? ' Las cifras reflejan los filtros aplicados.' : '');
     $('#filtros-activos').textContent = filtros ? String(filtros) : '';
     var no = Object.keys(r.estadosNoListados);
-    $('#fuente-alertas').innerHTML = no.length
+    var sinModulo = estado.columnas && !estado.columnas.modulo
+      ? '<span class="aviso-info">El archivo no tiene la columna Módulo afectado: las HU quedan como Sin módulo identificado.</span>' : '';
+    $('#fuente-alertas').innerHTML = sinModulo + (no.length
       ? '<span class="alerta">Hay estados sin fase asignada que no se cuentan como HU consideradas: ' + esc(no.map(function (k) { return k + ' (' + r.estadosNoListados[k] + ')'; }).join(', ')) + '. Asígnales una fase en Configuración.</span>'
-      : '';
+      : '');
   }
 
   function listaNatural(items) {
@@ -1256,7 +1257,6 @@
     $('#cfg-avance').value = estado.config.avance.acciones.map(function (x) { return x.accion + ' => ' + +(x.esfuerzo * 100).toFixed(2) + ' => ' + x.estados.join('; '); }).join('\n');
     $('#cfg-avance-actual').checked = !!estado.config.avance.incluirActual;
     $('#cfg-equivalencias').value = estado.config.equivalencias.map(function (e) { return e[0] + ' => ' + e[1]; }).join('\n');
-    $('#cfg-palabras').value = estado.config.palabras.map(function (p) { return p[0] + ' => ' + p[1]; }).join('\n');
   }
 
   function leerMetas() {
@@ -1334,15 +1334,6 @@
     toast(reglas.length ? reglas.length + ' equivalencia(s) aplicada(s)' : 'Equivalencias eliminadas');
   }
 
-  function guardarPalabras() {
-    var reglas = leerReglas('#cfg-palabras');
-    if (!reglas.length) { toast('No se encontraron reglas válidas (formato: palabra => Módulo).'); return; }
-    estado.config.palabras = reglas;
-    guardar('palabras', reglas);
-    reparsear();
-    toast(reglas.length + ' reglas de módulo aplicadas');
-  }
-
   // ---------- tema ----------
   function aplicarTema(t) {
     if (t) document.documentElement.setAttribute('data-theme', t);
@@ -1411,7 +1402,6 @@
     $('#cfg-parametros').addEventListener('change', leerParametros);
     $('#btn-guardar-estados').addEventListener('click', guardarEstados);
     $('#sel-anio').addEventListener('change', function (e) { guardarParametros({ anio: e.target.value === 'todos' ? 'todos' : Number(e.target.value) }); });
-    $('#btn-guardar-palabras').addEventListener('click', guardarPalabras);
     $('#btn-guardar-equivalencias').addEventListener('click', guardarEquivalencias);
     $('#btn-guardar-avance').addEventListener('click', guardarAvance);
     $('#av-agrupar').addEventListener('click', function (e) {
@@ -1420,8 +1410,8 @@
     });
     $('#av-buscar').addEventListener('input', renderAvanceHU);
     $('#btn-restaurar').addEventListener('click', function () {
-      estado.config = { metas: {}, parametros: {}, estados: I.ESTADOS.slice(), equivalencias: I.EQUIVALENCIAS.slice(), avance: JSON.parse(JSON.stringify(I.AVANCE)), palabras: I.PALABRAS_CLAVE.slice() };
-      ['metas', 'parametros', 'estados', 'equivalencias', 'avance', 'palabras', 'manuales'].forEach(function (k) { try { localStorage.removeItem(CLAVE + k); } catch (e) { /* */ } });
+      estado.config = { metas: {}, parametros: {}, estados: I.ESTADOS.slice(), equivalencias: I.EQUIVALENCIAS.slice(), avance: JSON.parse(JSON.stringify(I.AVANCE)) };
+      ['metas', 'parametros', 'estados', 'equivalencias', 'avance', 'manuales'].forEach(function (k) { try { localStorage.removeItem(CLAVE + k); } catch (e) { /* */ } });
       renderConfig.hecho = false;
       reparsear();
       toast('Configuración restaurada');
@@ -1488,6 +1478,7 @@
   }
 
   function iniciar() {
+    try { localStorage.removeItem(CLAVE + 'palabras'); } catch (e) { /* almacenamiento no disponible */ }
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(function () { if (estado.resultado) { renderDistribucion(); renderSeguimiento(); } });
     }
