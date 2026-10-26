@@ -231,3 +231,14 @@ test('el módulo se toma de la columna Módulo afectado', () => {
   const m2 = m.map((f) => f.slice()); m2[1][m2[1].length - 1] = 'MODULO AFECTADO';
   assert.equal(I.parsearHoja(m2).registros.find((h) => h.id === ids[0]).modulo, 'Nómina');
 });
+
+test('formato InteTrack: usa Módulo Afectado de la HU y no el del bloque Relaciones', () => {
+  const m = ejemplo.matriz.map((f) => f.slice());
+  // Descarga de InteTrack: "Módulo Afectado" tras Precisión HU y repetido al final en Relaciones
+  m[1].push('Módulo Afectado', 'Módulo Afectado');
+  const ids = [...new Set(m.slice(2).map((f) => String(f[1])))];
+  m.forEach((f, i) => { if (i > 1) f.push(String(f[1]) === ids[0] ? '' : 'Nómina', 'Contabilidad'); });
+  const regs = I.parsearHoja(m).registros;
+  assert.equal(regs.find((h) => h.id === ids[0]).modulo, I.SIN_MODULO);
+  assert.equal(regs.find((h) => h.id === ids[1]).modulo, 'Nómina');
+});
