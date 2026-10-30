@@ -106,14 +106,16 @@ Arriba se elige el **informe** (corte) que se quiere ver; todas las vistas muest
   Desarrollo (45 %) y Pruebas funcionales (25 %), escalados a 100 %: un paquete *En desarrollo* lleva 0 %, uno en
   *Pruebas funcionales y Documentación* 64 % (45 de 70), los terminados (Despliegue, Entrega…, Cierre…, Garantía…) 100 % y
   los demás estados 0 %. Todo se edita en Configuración.
-  - **Avance del sprint**: promedio del avance de los paquetes de cada sprint, según el Sprint del paquete (los paquetes sin
-    sprint se informan aparte y no entran), con paquetes terminados, en pruebas, sin avance y puntos terminados.
+  - **Avance del sprint**: promedio del avance de los paquetes de cada sprint. El sprint es el de la **Historia de Usuario**
+    a la que se relaciona el paquete (los paquetes de HU sin sprint se informan aparte y no entran), con paquetes
+    terminados, en pruebas, sin avance y puntos terminados.
   - **Burndown**: puntos de historia pendientes (paquetes no terminados) del sprint elegido en cada Excel cargado como
     Sprint, ordenados por fecha de corte, frente a una línea ideal que llega a 0 en la fecha de finalización más tardía
-    de los paquetes del sprint. Lista los **ID que pasaron de un sprint a otro** entre cortes (salieron o entraron).
+    de los paquetes del sprint. Lista los **ID que pasaron de un sprint a otro** entre cortes (salieron o entraron) porque
+    cambió el sprint de su HU.
     Si los paquetes no tienen puntos, se cuentan paquetes.
-  - **Avance por ID**: avance de cada HU como el promedio de sus paquetes Diseño y Desarrollo, con el estado, sprint y
-    avance de cada paquete; se puede buscar y ver solo las HU sin terminar.
+  - **Avance por ID**: gráfica de barras con el avance de cada HU del sprint elegido, como el promedio de sus paquetes
+    Diseño y Desarrollo (el detalle de cada paquete aparece al pasar el cursor); se puede buscar y ver solo las HU sin terminar.
 - **Comparativo de informes**: elige un informe base y otro para comparar, y muestra:
   - los 11 indicadores de cada corte, la variación en puntos (verde si mejora frente a la meta, rojo si empeora)
     y el cambio de estado;
@@ -126,7 +128,8 @@ Arriba se elige el **informe** (corte) que se quiere ver; todas las vistas muest
   abrir un archivo, **eliminar** uno, varios (con las casillas y *Eliminar seleccionados*) o todos, y
   **exportar o importar el histórico** (archivo JSON) para llevarlo a otro equipo o respaldarlo. Eliminar pide
   confirmación y no modifica el Excel original. También se llega con *Administrar archivos* en el encabezado.
-- **Seguimiento HU abiertas**: HU abiertas por Cliente, Sprint, Módulo y Asignado a, cruzadas por Tipo de Solicitud.
+- **HU abiertas**: gráficas de HU abiertas por Cliente, Sprint, Módulo y Asignado a, cruzadas por Tipo de Solicitud; cada
+  barra muestra la cantidad y su % sobre el total de HU abiertas.
 - **Detalle HU**: listado con búsqueda, filtros, orden por columna y exportación a CSV.
 - **Ficha de indicadores**: definición, fórmula, frecuencia, meta, responsable y resultado actual.
 

@@ -257,50 +257,51 @@ function fila(hu, rel) {
 }
 function hoja(filas) { return [['Paquetes de trabajo'], ENC].concat(filas); }
 const DYD = 'Diseño y Desarrollo';
-const base = (sprintP, estados) => hoja([
-  fila({ id: '1', estado: 'En desarrollo', puntos: '2', tiempo: 10, modulo: 'Nómina' }, { id: '101', tipo: 'Épica', estado: 'En ejecución', relacion: 'elemento secundario de' }),
-  fila({ id: '1', estado: 'En desarrollo', puntos: '2', tiempo: 10, modulo: 'Nómina' }, { id: '201', tipo: DYD, estado: estados[0], sprint: sprintP[0], puntos: '3', fin: '06-11-2026' }),
-  fila({ id: '1', estado: 'En desarrollo', puntos: '2', tiempo: 10, modulo: 'Nómina' }, { id: '202', tipo: DYD, estado: estados[1], sprint: sprintP[1], puntos: '5' }),
-  fila({ id: '2', estado: 'Entrega a Operaciones', puntos: '3', tiempo: 26 }, { id: '203', tipo: DYD, estado: estados[2], sprint: sprintP[2], puntos: '2' }),
+// sprints = [sprint de la HU 1, sprint de la HU 2]; los paquetes traen su propio sprint 'P', que no se usa
+const base = (sprints, estados) => hoja([
+  fila({ id: '1', sprint: sprints[0], estado: 'En desarrollo', puntos: '2', tiempo: 10, modulo: 'Nómina' }, { id: '101', tipo: 'Épica', estado: 'En ejecución', relacion: 'elemento secundario de' }),
+  fila({ id: '1', sprint: sprints[0], estado: 'En desarrollo', puntos: '2', tiempo: 10, modulo: 'Nómina' }, { id: '201', tipo: DYD, estado: estados[0], sprint: 'P', puntos: '3', fin: '06-11-2026' }),
+  fila({ id: '1', sprint: sprints[0], estado: 'En desarrollo', puntos: '2', tiempo: 10, modulo: 'Nómina' }, { id: '202', tipo: DYD, estado: estados[1], sprint: 'P', puntos: '5' }),
+  fila({ id: '2', sprint: sprints[1], estado: 'Entrega a Operaciones', puntos: '3', tiempo: 26 }, { id: '203', tipo: DYD, estado: estados[2], sprint: 'P', puntos: '2' }),
   fila({ id: '3', estado: 'Levantamiento Requerimiento' })
 ]);
 
 test('efectividad: tiempo invertido / puntos de historia de las HU consideradas', () => {
-  const p = I.parsearHoja(base(['S1', 'S1', ''], ['En desarrollo', 'Pruebas funcionales y Documentación', 'Cierre DyD']));
+  const p = I.parsearHoja(base(['S1', ''], ['En desarrollo', 'Pruebas funcionales y Documentación', 'Cierre DyD']));
   assert.ok(p.columnas.puntos && p.columnas.tiempo && p.columnas.relaciones);
   const hu1 = p.registros.find((h) => h.id === '1');
-  assert.equal(hu1.puntos, 2); assert.equal(hu1.tiempo, 10); assert.equal(hu1.modulo, 'Nómina');
+  assert.equal(hu1.puntos, 2); assert.equal(hu1.tiempo, 10); assert.equal(hu1.modulo, 'Nómina'); assert.equal(hu1.sprint, 'S1');
   const k = I.calcular(p.registros).kpis.find((x) => x.id === 'efectividad');
   assert.equal(k.numerador, 36); assert.equal(k.denominador, 5);
   assert.ok(Math.abs(k.resultado - 7.2) < 1e-9);
   assert.equal(k.estado, 'EN META'); // meta <= 8 h por punto
 });
 
-test('avance del sprint y por ID: solo Desarrollo y Pruebas de los paquetes Diseño y Desarrollo', () => {
-  const p = I.parsearHoja(base(['S1', 'S1', ''], ['En desarrollo', 'Pruebas funcionales y Documentación', 'Cierre DyD']));
+test('avance del sprint y por ID: sprint de la HU; solo Desarrollo y Pruebas de los paquetes Diseño y Desarrollo', () => {
+  const p = I.parsearHoja(base(['S1', ''], ['En desarrollo', 'Pruebas funcionales y Documentación', 'Cierre DyD']));
   const s = I.calcularSprint(p.registros);
   assert.equal(s.paquetes.length, 3); // la Épica no cuenta
   const av = Object.fromEntries(s.paquetes.map((x) => [x.paquete.id, x.avance]));
   assert.equal(av['201'], 0);                              // En desarrollo: aún no termina Desarrollo
   assert.ok(Math.abs(av['202'] - 45 / 70) < 1e-9);        // Pruebas: Desarrollo hecho, escalado a 100%
   assert.equal(av['203'], 1);                              // Cierre DyD: terminado
-  assert.equal(s.porSprint.length, 1);
-  assert.equal(s.porSprint[0].nombre, 'S1');
+  assert.deepEqual(s.porSprint.map((x) => [x.nombre, x.n]), [['S1', 2]]); // sprint de la HU, no el del paquete
   assert.ok(Math.abs(s.porSprint[0].avance - (45 / 70) / 2) < 1e-9);
-  assert.equal(s.sinSprint.n, 1);                          // el paquete sin sprint no entra al avance del sprint
+  assert.equal(s.sinSprint.n, 1);                          // paquete de una HU sin sprint
   const id1 = s.porHU.find((x) => x.hu.id === '1');
+  assert.equal(id1.sprint, 'S1');
   assert.ok(Math.abs(id1.avance - (45 / 70) / 2) < 1e-9);
   assert.equal(s.porHU.find((x) => x.hu.id === '2').avance, 1);
   assert.equal(s.porHU.find((x) => x.hu.id === '3'), undefined);
 });
 
-test('burndown: puntos pendientes por corte e ID que pasan a otro sprint', () => {
-  const c1 = I.parsearHoja(base(['S1', 'S1', 'S1'], ['En desarrollo', 'En desarrollo', 'Pruebas funcionales y Documentación'])).registros;
-  const c2 = I.parsearHoja(base(['S1', 'S2', 'S1'], ['Pruebas funcionales y Documentación', 'En desarrollo', 'Cierre DyD'])).registros;
+test('burndown: puntos pendientes por corte e ID que pasan a otro sprint con su HU', () => {
+  const c1 = I.parsearHoja(base(['S1', 'S1'], ['En desarrollo', 'En desarrollo', 'Pruebas funcionales y Documentación'])).registros;
+  const c2 = I.parsearHoja(base(['S1', 'S2'], ['Pruebas funcionales y Documentación', 'En desarrollo', 'Cierre DyD'])).registros;
   const b = I.calcularBurndown([{ corte: '2026-11-02', registros: c2 }, { corte: '2026-10-26', registros: c1 }], 'S1');
-  assert.deepEqual(b.puntos.map((x) => [x.corte, x.pendientes]), [['2026-10-26', 10], ['2026-11-02', 3]]);
+  assert.deepEqual(b.puntos.map((x) => [x.corte, x.pendientes]), [['2026-10-26', 10], ['2026-11-02', 8]]);
   assert.equal(b.fin, '2026-11-06');
   assert.equal(b.puntos[0].ideal, 10);
   assert.ok(Math.abs(b.puntos[1].ideal - 10 * 4 / 11) < 1e-9);
-  assert.deepEqual(b.movimientos.map((m) => [m.tipo, m.id, m.de, m.a, m.corte]), [['salio', '202', 'S1', 'S2', '2026-11-02']]);
+  assert.deepEqual(b.movimientos.map((m) => [m.tipo, m.id, m.de, m.a, m.corte]), [['salio', '203', 'S1', 'S2', '2026-11-02']]);
 });

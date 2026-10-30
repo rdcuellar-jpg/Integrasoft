@@ -652,7 +652,10 @@
     return { avance: 0, accion: 'Sin iniciar', orden: -1 };
   }
 
-  /** Paquetes Diseño y Desarrollo (únicos) relacionados con las HU, con su avance. */
+  /**
+   * Paquetes Diseño y Desarrollo (únicos) relacionados con las HU, con su avance.
+   * El sprint es el de la Historia de Usuario relacionada ('' si la HU no tiene sprint).
+   */
   function paquetesDyD(registros, cfg) {
     cfg = cfg || AVANCE_DYD;
     var vistos = {}, lista = [];
@@ -661,7 +664,7 @@
         if (vistos[p.id] || !coincideCriterio(p.tipo, cfg.tipo)) return;
         vistos[p.id] = true;
         var a = avancePaquete(p, cfg);
-        lista.push({ paquete: p, avance: a.avance, accion: a.accion, orden: a.orden });
+        lista.push({ paquete: p, hu: h, sprint: h.sprint === SIN_SPRINT ? '' : h.sprint, avance: a.avance, accion: a.accion, orden: a.orden });
       });
     });
     return lista;
@@ -685,14 +688,14 @@
 
   /**
    * Avance del sprint y avance por ID a partir de los paquetes Diseño y Desarrollo
-   * relacionados con las HU. El sprint es el del paquete (sin sprint no entra al avance del sprint).
+   * relacionados con las HU. El sprint es el de la HU (las HU sin sprint no entran al avance del sprint).
    */
   function calcularSprint(registros, cfg) {
     cfg = cfg || AVANCE_DYD;
     var lista = paquetesDyD(registros, cfg);
     var grupos = {}, sinSprint = [];
     lista.forEach(function (x) {
-      var s = x.paquete.sprint;
+      var s = x.sprint;
       if (!s) { sinSprint.push(x); return; }
       (grupos[s] = grupos[s] || []).push(x);
     });
@@ -704,6 +707,7 @@
       if (!items.length) return null;
       var r = resumenPaquetes(h.id, items);
       r.hu = h;
+      r.sprint = h.sprint === SIN_SPRINT ? '' : h.sprint;
       return r;
     }).filter(Boolean);
     return { tabla: tablaAvance(cfg), paquetes: lista, porSprint: porSprint, sinSprint: resumenPaquetes('Sin sprint', sinSprint), porHU: porHU, total: resumenPaquetes('Total', lista) };
@@ -726,19 +730,19 @@
       var lista = paquetesDyD(c.registros, cfg);
       var mapa = {};
       lista.forEach(function (x) { mapa[x.paquete.id] = x; });
-      var en = lista.filter(function (x) { return x.paquete.sprint === sprint; });
+      var en = lista.filter(function (x) { return x.sprint === sprint; });
       en.forEach(function (x) { if (x.paquete.fechaFin && (!fin || x.paquete.fechaFin > fin)) fin = x.paquete.fechaFin; });
       if (anterior) {
         Object.keys(anterior).forEach(function (id) {
           var a = anterior[id], b = mapa[id];
-          if (a.paquete.sprint === sprint && b && b.paquete.sprint !== sprint) {
-            movimientos.push({ tipo: 'salio', id: id, asunto: b.paquete.asunto, de: sprint, a: b.paquete.sprint || 'Sin sprint', corte: c.corte, puntos: b.paquete.puntos, estado: b.paquete.estado, hus: b.paquete.hus });
+          if (a.sprint === sprint && b && b.sprint !== sprint) {
+            movimientos.push({ tipo: 'salio', id: id, asunto: b.paquete.asunto, de: sprint, a: b.sprint || SIN_SPRINT, corte: c.corte, puntos: b.paquete.puntos, estado: b.paquete.estado, hus: b.paquete.hus });
           }
         });
         en.forEach(function (b) {
           var a = anterior[b.paquete.id];
-          if (a && a.paquete.sprint !== sprint) {
-            movimientos.push({ tipo: 'entro', id: b.paquete.id, asunto: b.paquete.asunto, de: a.paquete.sprint || 'Sin sprint', a: sprint, corte: c.corte, puntos: b.paquete.puntos, estado: b.paquete.estado, hus: b.paquete.hus });
+          if (a && a.sprint !== sprint) {
+            movimientos.push({ tipo: 'entro', id: b.paquete.id, asunto: b.paquete.asunto, de: a.sprint || SIN_SPRINT, a: sprint, corte: c.corte, puntos: b.paquete.puntos, estado: b.paquete.estado, hus: b.paquete.hus });
           }
         });
       }

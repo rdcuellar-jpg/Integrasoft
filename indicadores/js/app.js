@@ -403,7 +403,7 @@
     });
     var nombres = {};
     sp.porSprint.forEach(function (x) { nombres[x.nombre] = true; });
-    cortesSprint.forEach(function (c) { I.paquetesDyD(c.registros, cfg).forEach(function (x) { if (x.paquete.sprint) nombres[x.paquete.sprint] = true; }); });
+    cortesSprint.forEach(function (c) { I.paquetesDyD(c.registros, cfg).forEach(function (x) { if (x.sprint) nombres[x.sprint] = true; }); });
     var lista = Object.keys(nombres).sort(function (a, b) { return I.compararSprint(b, a); });
     // Por defecto: el sprint con más paquetes sin terminar; si todos terminaron, el de fecha de fin más reciente
     var porDefecto = sp.porSprint.slice().sort(function (a, b) {
@@ -418,10 +418,10 @@
     var s = sp.porSprint.find(function (x) { return x.nombre === actual; }) || null;
     var total = sp.tabla.total || 1;
     var regla = sp.tabla.filas.map(function (f) { return f.estados.join(' / ') + ' ' + pct(f.avance / total, 0); });
-    $('#sp-regla').textContent = 'Paquetes ' + cfg.tipo + ' relacionados con las HU, según el Sprint del paquete. Avance de cada paquete: ' +
+    $('#sp-regla').textContent = 'Paquetes ' + cfg.tipo + ' relacionados con las HU, agrupados por el Sprint de la Historia de Usuario. Avance de cada paquete: ' +
       regla.join(', ') + ', terminados (' + (cfg.terminados || []).join(', ') + ') 100% y otros estados 0%.';
     var sinSprint = sp.sinSprint.n
-      ? ' ' + fmtNum.format(sp.sinSprint.n) + ' paquetes ' + cfg.tipo + ' no tienen sprint y no entran en el avance del sprint.' : '';
+      ? ' ' + fmtNum.format(sp.sinSprint.n) + ' paquetes ' + cfg.tipo + ' son de HU sin sprint y no entran en el avance del sprint.' : '';
     if (s) {
       $('#sp-titular').textContent = 'Avance del sprint: ' + pct(s.avance);
       $('#sp-detalle').textContent = fmtNum.format(s.terminados) + ' de ' + fmtNum.format(s.n) + ' paquetes ' + cfg.tipo + ' del ' + actual +
@@ -444,9 +444,10 @@
         '</td><td>' + esc(x.fin ? fecha(x.fin) : '') + '</td><td class="av-celda">' + barraAvance(x.avance) + '<b>' + pct(x.avance) + '</b></td></tr>';
     };
     $('#t-sp-sprints-tabla').innerHTML = '<thead><tr><th>Sprint</th><th class="num">Paquetes</th><th class="num">Sin avance</th><th class="num">En pruebas</th><th class="num">Terminados</th><th class="num">Puntos terminados</th><th>Fin</th><th>Avance</th></tr></thead><tbody>' +
-      (sp.porSprint.length ? sp.porSprint.map(function (x) { return filaSprint(x, x.nombre === actual ? 'actual' : ''); }).join('') : '<tr><td colspan="8">Ningún paquete ' + esc(cfg.tipo) + ' tiene sprint en este corte.</td></tr>') +
+      (sp.porSprint.length ? sp.porSprint.map(function (x) { return filaSprint(x, x.nombre === actual ? 'actual' : ''); }).join('') : '<tr><td colspan="8">Ninguna HU con paquetes ' + esc(cfg.tipo) + ' tiene sprint en este corte.</td></tr>') +
       (sp.sinSprint.n ? filaSprint(sp.sinSprint, 'sep') : '') + '</tbody>';
 
+    estado.sprintActual = actual;
     renderBurndown(cortesSprint, actual);
     renderSprintId();
   }
@@ -520,23 +521,58 @@
   function renderSprintId() {
     var sp = estado.sprintRes;
     if (!sp) return;
-    var tipo = estado.config.dyd.tipo;
+    var tipo = estado.config.dyd.tipo, sprint = estado.sprintActual;
     var q = ($('#sp-buscar').value || '').trim().toLowerCase();
     var solo = $('#sp-solo-pendientes').checked;
-    var filas = sp.porHU.filter(function (x) { return !solo || x.avance < 1; }).filter(function (x) {
+    // Mismo sprint elegido arriba (el de la Historia de Usuario)
+    var delSprint = sp.porHU.filter(function (x) { return !sprint || x.sprint === sprint; });
+    var filas = delSprint.filter(function (x) { return !solo || x.avance < 1; }).filter(function (x) {
       return !q || [x.hu.id, x.hu.asunto, x.hu.cliente, x.hu.estado].concat(x.items.map(function (i) { return i.paquete.id + ' ' + i.paquete.asunto; })).join(' ').toLowerCase().indexOf(q) !== -1;
     }).sort(function (a, b) { return a.avance - b.avance || Number(a.hu.id) - Number(b.hu.id); });
-    var pendientes = sp.porHU.filter(function (x) { return x.avance < 1; }).length;
-    $('#sp-id-nota').textContent = fmtNum.format(sp.porHU.length) + ' HU tienen paquetes ' + tipo + ' relacionados (' + fmtNum.format(pendientes) +
-      ' sin terminar). El avance de cada HU es el promedio de sus paquetes; solo cuentan Desarrollo y Pruebas funcionales.';
-    $('#t-sp-id-tabla').innerHTML = '<thead><tr><th class="num">ID</th><th>Asunto</th><th>Cliente</th><th>Estado de la HU</th><th>Paquetes ' + esc(tipo) + '</th><th>Avance</th></tr></thead><tbody>' +
-      (filas.length ? filas.map(function (x) {
-        return '<tr><td class="num">' + esc(x.hu.id) + '</td><td class="asunto">' + esc(x.hu.asunto) + '</td><td>' + esc(x.hu.cliente) + '</td><td>' + esc(x.hu.estado) +
-          '</td><td><ul class="sp-paquetes">' + x.items.map(function (i) {
-            return '<li><b>' + esc(i.paquete.id) + '</b> ' + esc(i.paquete.estado || 'Sin estado') + (i.paquete.sprint ? ' · ' + esc(i.paquete.sprint) : '') +
-              ' · <span' + (i.avance >= 1 ? ' class="sp-ok"' : '') + '>' + pct(i.avance, 0) + '</span></li>';
-          }).join('') + '</ul></td><td class="av-celda">' + barraAvance(x.avance) + '<b>' + pct(x.avance, 0) + '</b></td></tr>';
-      }).join('') : '<tr><td colspan="6">' + (sp.porHU.length ? 'Ninguna HU coincide con la búsqueda.' : 'No hay HU con paquetes ' + esc(tipo) + ' relacionados en este corte.') + '</td></tr>') + '</tbody>';
+    var pendientes = delSprint.filter(function (x) { return x.avance < 1; }).length;
+    $('#sp-id-nota').textContent = fmtNum.format(delSprint.length) + ' HU ' + (sprint ? 'del ' + sprint + ' ' : '') + 'tienen paquetes ' + tipo + ' relacionados (' +
+      fmtNum.format(pendientes) + ' sin terminar)' + (filas.length !== delSprint.length ? '; se muestran ' + fmtNum.format(filas.length) : '') +
+      '. El avance de cada HU es el promedio de sus paquetes; solo cuentan Desarrollo y Pruebas funcionales.';
+    var lienzo = $('#sp-id-lienzo');
+    lienzo.hidden = !filas.length;
+    if (!filas.length) {
+      $('#sp-id-nota').textContent += ' ' + (delSprint.length ? 'Ninguna HU coincide con el filtro.' : 'No hay HU con paquetes ' + tipo + ' relacionados en este sprint.');
+      if (estado.graficos['g-sp-id']) { estado.graficos['g-sp-id'].destroy(); delete estado.graficos['g-sp-id']; }
+      return;
+    }
+    if (typeof Chart === 'undefined') return;
+    configurarChart();
+    var c = colores(), navy = cssVar('--navy'), coral = cssVar('--coral');
+    lienzo.style.height = Math.max(160, filas.length * 30 + 50) + 'px';
+    var corto = function (t) { t = String(t); return t.length > 42 ? t.slice(0, 41) + '…' : t; };
+    grafico('g-sp-id', {
+      type: 'bar',
+      data: {
+        labels: filas.map(function (x) { return x.hu.id + ' · ' + corto(x.hu.asunto); }),
+        datasets: [barra(c, filas.map(function (x) { return x.avance >= 1 ? navy : x.avance > 0 ? cssVar('--fase-2') : coral; }), {
+          label: 'Avance', data: filas.map(function (x) { return +(x.avance * 100).toFixed(1); }), borderRadius: 1, maxBarThickness: 18, minBarLength: 4
+        })]
+      },
+      options: {
+        indexAxis: 'y', layout: { padding: { right: 56 } },
+        scales: {
+          x: { beginAtZero: true, max: 100, grid: { color: c.grid }, border: { display: false }, ticks: { callback: function (v) { return v + '%'; } } },
+          y: { grid: { display: false }, border: { color: c.grid }, ticks: { autoSkip: false, callback: etiquetaCorta } }
+        },
+        plugins: {
+          legend: { display: false },
+          etiquetasTotales: { activo: true, mostrarCero: true, formato: function (v) { return fmtNum.format(v) + '%'; } },
+          tooltip: { callbacks: {
+            title: function (its) { var x = filas[its[0].dataIndex]; return 'HU ' + x.hu.id + ' · ' + x.hu.cliente; },
+            label: function (it) { return ' Avance: ' + pct(filas[it.dataIndex].avance, 0); },
+            afterLabel: function (it) {
+              return filas[it.dataIndex].items.map(function (i) { return i.paquete.id + ' ' + (i.paquete.estado || 'Sin estado') + ': ' + pct(i.avance, 0); });
+            }
+          } }
+        }
+      },
+      plugins: [etiquetasTotales]
+    });
   }
 
   function renderFuente() {
@@ -881,7 +917,7 @@
           var pos = horizontal ? el.x : el.y;
           if (extremo === null || (horizontal ? pos > extremo.x : pos < extremo.y)) extremo = el;
         });
-        if (!total || !extremo) continue;
+        if ((!total && !opts.mostrarCero) || !extremo) continue;
         var txt = opts.formato ? opts.formato(total, i) : String(total);
         if (horizontal) { ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(txt, extremo.x + 6, extremo.y); }
         else { ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(txt, extremo.x, extremo.y - 4); }
@@ -1012,21 +1048,7 @@
     barrasH('g-cliente', clientes);
   }
 
-  function tablaCruzada(id, filas, totalAbiertas, etiqueta) {
-    var tipos = I.TIPOS_SOLICITUD;
-    var tot = { total: 0 }; tipos.forEach(function (t) { tot[t] = 0; });
-    filas.forEach(function (f) { tipos.forEach(function (t) { tot[t] += f[t]; }); tot.total += f.total; });
-    $(id).innerHTML = '<thead><tr><th>' + esc(etiqueta) + '</th>' + tipos.map(function (t) { return '<th class="num">' + esc(t) + '</th>'; }).join('') +
-      '<th class="num">Total</th><th class="num">% del total</th></tr></thead><tbody>' +
-      (filas.length ? filas.map(function (f) {
-        return '<tr><td>' + esc(f.nombre || '(vacío)') + '</td>' + tipos.map(function (t) { return '<td class="num">' + f[t] + '</td>'; }).join('') +
-          '<td class="num"><strong>' + f.total + '</strong></td><td class="num">' + pct(f.pct) + '</td></tr>';
-      }).join('') : '<tr><td colspan="' + (tipos.length + 3) + '">Sin HU abiertas para los filtros seleccionados.</td></tr>') +
-      '<tr class="total"><td>Total</td>' + tipos.map(function (t) { return '<td class="num">' + tot[t] + '</td>'; }).join('') +
-      '<td class="num">' + tot.total + '</td><td class="num">' + pct(totalAbiertas ? tot.total / totalAbiertas : 0) + '</td></tr></tbody>';
-  }
-
-  function graficoApilado(id, filas) {
+  function graficoApilado(id, filas, totalAbiertas) {
     var c = colores(), ct = colorTipo(c);
     var el = document.getElementById(id).parentNode;
     el.style.height = Math.max(200, filas.length * 34 + 70) + 'px';
@@ -1044,12 +1066,12 @@
       options: {
         indexAxis: 'y',
         scales: { x: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, grid: { color: c.grid }, border: { display: false } }, y: { stacked: true, grid: { display: false }, ticks: { callback: etiquetaCorta } } },
-        layout: { padding: { right: 36 } },
+        layout: { padding: { right: 84 } },
         interaction: { mode: 'index', intersect: false, axis: 'y' },
         plugins: {
           legend: { position: 'top', align: 'start' },
-          etiquetasTotales: { activo: true },
-          tooltip: { filter: function (it) { return it.raw; }, callbacks: { footer: function (its) { return 'Total: ' + filas[its[0].dataIndex].total + ' HU'; } } }
+          etiquetasTotales: { activo: true, formato: function (v) { return v + ' (' + pct(totalAbiertas ? v / totalAbiertas : 0) + ')'; } },
+          tooltip: { filter: function (it) { return it.raw; }, callbacks: { footer: function (its) { var f = filas[its[0].dataIndex]; return 'Total: ' + f.total + ' HU (' + pct(f.pct) + ' del total)'; } } }
         }
       },
       plugins: [etiquetasTotales]
@@ -1060,8 +1082,7 @@
     var s = estado.resultado.seguimiento;
     [['cliente', 'porCliente', 'Cliente'], ['sprint', 'porSprint', 'Sprint'], ['modulo', 'porModulo', 'Módulo'], ['asignado', 'porAsignado', 'Asignado a']]
       .forEach(function (p) {
-        tablaCruzada('#t-seg-' + p[0], s[p[1]], s.total, p[2]);
-        if (typeof Chart !== 'undefined') graficoApilado('g-seg-' + p[0], s[p[1]]);
+        if (typeof Chart !== 'undefined') graficoApilado('g-seg-' + p[0], s[p[1]], s.total);
       });
   }
 

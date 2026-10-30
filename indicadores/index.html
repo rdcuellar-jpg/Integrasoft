@@ -167,27 +167,23 @@
 
     <!-- SEGUIMIENTO -->
     <section class="panel" data-panel="seguimiento" hidden>
-      <p class="intro">Solo HU con En flujo = Abierto. El módulo se toma de la columna Módulo afectado del Excel.</p>
+      <p class="intro">Solo HU con En flujo = Abierto. Cada barra muestra las HU y su % sobre el total de HU abiertas. El módulo se toma de la columna Módulo afectado del Excel.</p>
       <div class="graficos">
         <figure class="tarjeta ancho">
           <figcaption>HU abiertas por Cliente y Tipo de Solicitud</figcaption>
           <div class="lienzo lienzo-alto"><canvas id="g-seg-cliente"></canvas></div>
-          <div class="tabla-scroll"><table class="tabla" id="t-seg-cliente"></table></div>
         </figure>
         <figure class="tarjeta ancho">
           <figcaption>HU abiertas por Sprint</figcaption>
           <div class="lienzo"><canvas id="g-seg-sprint"></canvas></div>
-          <div class="tabla-scroll"><table class="tabla" id="t-seg-sprint"></table></div>
         </figure>
         <figure class="tarjeta ancho">
           <figcaption>HU abiertas por Módulo</figcaption>
           <div class="lienzo lienzo-alto"><canvas id="g-seg-modulo"></canvas></div>
-          <div class="tabla-scroll"><table class="tabla" id="t-seg-modulo"></table></div>
         </figure>
         <figure class="tarjeta ancho">
           <figcaption>HU abiertas por Asignado a</figcaption>
           <div class="lienzo"><canvas id="g-seg-asignado"></canvas></div>
-          <div class="tabla-scroll"><table class="tabla" id="t-seg-asignado"></table></div>
         </figure>
       </div>
     </section>
@@ -302,7 +298,7 @@
           </div>
         </div>
         <p class="nota" id="sp-id-nota"></p>
-        <div class="tabla-scroll tabla-detalle"><table class="tabla" id="t-sp-id-tabla"></table></div>
+        <div class="lienzo" id="sp-id-lienzo"><canvas id="g-sp-id" aria-label="Avance por ID de las HU del sprint"></canvas></div>
       </section>
     </section>
 
