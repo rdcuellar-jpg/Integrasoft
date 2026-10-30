@@ -737,3 +737,35 @@ main { max-width: 1360px; margin: 0 auto; padding: 18px 28px 56px; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn-peligro { color: #11151c; } }
 [data-panel="archivos"] .arch { margin-top: 20px; }
 .aviso-info { display: block; margin-top: 4px; color: var(--text-secondary); }
+
+/* ---------- Sprint: avance de Diseño y Desarrollo y burndown ---------- */
+.sel-sprint { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 14px; }
+.sel-sprint select { min-width: min(320px, 70vw); }
+.sp-sin-rel { margin: 0 0 18px; }
+.sp-sub { font-family: var(--serif); font-size: 17px; margin: 26px 0 10px; }
+.sp-barra-id { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.sp-barra-id .check { display: flex; align-items: center; gap: 6px; font-size: 13.5px; }
+#sp-buscar { width: min(320px, 100%); }
+#t-sp-sprints-tabla tr.actual td { background: var(--accent-soft); }
+#t-sp-sprints-tabla tr.sep td { font-style: italic; color: var(--text-secondary); }
+#t-sp-sprints-tabla .btn-texto { font-weight: 600; text-align: left; }
+#t-sp-sprints-tabla .av-barra, #t-sp-id-tabla .av-barra { width: 80px; }
+.tabla-detalle #t-sp-id-tabla { min-width: 900px; }
+#t-sp-id-tabla .asunto { max-width: 340px; }
+.sp-paquetes { list-style: none; margin: 0; padding: 0; font-size: 12.5px; color: var(--text-secondary); }
+.sp-paquetes li + li { margin-top: 3px; }
+.sp-paquetes b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.sp-ok { color: var(--good-ink); font-weight: 600; }
+
+/* ---------- Diálogo de tipo de carga ---------- */
+.dlg { border: 1px solid var(--line); border-radius: var(--radio); padding: 24px; width: min(460px, calc(100vw - 32px)); background: var(--surface-1); color: var(--text-primary); box-shadow: 0 18px 50px rgba(0, 0, 0, .25); }
+.dlg::backdrop { background: rgba(15, 21, 25, .45); }
+.dlg h2 { font-family: var(--serif); font-size: 21px; margin: 0 0 4px; }
+.dlg .nota { margin: 0 0 16px; word-break: break-all; }
+.dlg-op { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--line); border-radius: var(--radio); margin-bottom: 10px; cursor: pointer; }
+.dlg-op:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); }
+.dlg-op input { margin-top: 3px; }
+.dlg-op small { display: block; color: var(--text-secondary); font-size: 12.5px; margin-top: 2px; }
+.dlg .zona-botones { justify-content: flex-end; margin-top: 18px; }
+.sc-valor .unidad { font-size: 13px; font-weight: 600; white-space: nowrap; }
+#t-informes-tabla select[data-inf-tipo] { min-width: 108px; }

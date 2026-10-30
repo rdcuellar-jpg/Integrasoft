@@ -26,8 +26,10 @@
       parametros: leer('parametros', {}),
       estados: leer('estados', null) || I.ESTADOS.slice(),
       equivalencias: leer('equivalencias', null) || I.EQUIVALENCIAS.slice(),
-      avance: leer('avance', null) || JSON.parse(JSON.stringify(I.AVANCE))
-    }
+      avance: leer('avance', null) || JSON.parse(JSON.stringify(I.AVANCE)),
+      dyd: leer('dyd', null) || JSON.parse(JSON.stringify(I.AVANCE_DYD))
+    },
+    sprint: leer('sprint', null)
   };
 
   // ---------- utilidades ----------
@@ -88,7 +90,10 @@
             return v instanceof Date ? String(v.getDate()).padStart(2, '0') + '-' + String(v.getMonth() + 1).padStart(2, '0') + '-' + v.getFullYear() : v;
           });
         });
-        registrarInforme(matriz, file.name, nombre, file.lastModified ? new Date(file.lastModified) : new Date());
+        var hoja = nombre, cuando = file.lastModified ? new Date(file.lastModified) : new Date();
+        pedirTipo(file.name).then(function (tipo) {
+          if (tipo) registrarInforme(matriz, file.name, hoja, cuando, tipo);
+        });
       } catch (err) {
         toast('Error al leer el archivo: ' + err.message);
       }
@@ -96,10 +101,26 @@
     lector.readAsArrayBuffer(file);
   }
 
+  /** Pregunta si el Excel es de indicadores de gestión o de un sprint (null si se cancela). */
+  function pedirTipo(archivo) {
+    var dlg = $('#dlg-tipo');
+    if (!dlg || typeof dlg.showModal !== 'function') return Promise.resolve('gestion');
+    $('#dlg-tipo-archivo').textContent = archivo;
+    return new Promise(function (resolver) {
+      dlg.addEventListener('close', function cerrar() {
+        dlg.removeEventListener('close', cerrar);
+        var marcado = $('input[name="tipo-carga"]:checked', dlg);
+        resolver(dlg.returnValue === 'ok' ? (marcado ? marcado.value : 'gestion') : null);
+      });
+      dlg.returnValue = '';
+      dlg.showModal();
+    });
+  }
+
   function cargarEjemplo() {
     fetch('data/hoja1-ejemplo.json')
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) { registrarInforme(d.matriz, 'Datos de ejemplo', 'Hoja1', new Date()); })
+      .then(function (d) { registrarInforme(d.matriz, 'Datos de ejemplo', 'Hoja1', new Date(), 'gestion'); })
       .catch(function () { toast('No se pudieron leer los datos de ejemplo. Abra la app desde un servidor web (ver README).'); });
   }
 
@@ -147,8 +168,9 @@
     return m ? m[1] + '-' + m[2] + '-' + m[3] : null;
   }
   function etiquetaInforme(inf) {
-    return fechaCorte(inf.corte) + ', ' + inf.nombre;
+    return fechaCorte(inf.corte) + ', ' + inf.nombre + (inf.tipo === 'sprint' ? ' · Sprint' : '');
   }
+  var TIPOS_CARGA = { gestion: 'Indicadores de gestión', sprint: 'Sprint' };
   function informeActual() {
     return estado.informes.find(function (i) { return i.id === estado.informeId; }) || null;
   }
@@ -161,14 +183,18 @@
   }
 
   /** Guarda el Excel cargado como informe (si no estaba ya) y lo muestra. */
-  function registrarInforme(matriz, archivo, hoja, fechaArchivo) {
+  function registrarInforme(matriz, archivo, hoja, fechaArchivo, tipo) {
     var h = Historico.huella(matriz);
+    tipo = tipo === 'sprint' ? 'sprint' : 'gestion';
     refrescarInformes().then(function (lista) {
       var existente = lista.find(function (i) { return i.huella === h; });
       if (existente) {
-        mostrarInforme(existente);
-        toast('Este archivo ya estaba guardado como el informe del ' + fechaCorte(existente.corte) + '.');
-        return null;
+        var aviso = 'Este archivo ya estaba guardado como el informe del ' + fechaCorte(existente.corte) + '.';
+        if ((existente.tipo || 'gestion') === tipo) { mostrarInforme(existente); toast(aviso); return null; }
+        return Historico.actualizar(existente.id, { tipo: tipo }).then(refrescarInformes).then(function (l) {
+          mostrarInforme(l.find(function (i) { return i.id === existente.id; }) || existente);
+          toast(aviso + ' Ahora queda como ' + TIPOS_CARGA[tipo] + '.');
+        });
       }
       var p = I.parsearHoja(matriz, opcionesParseo());
       var inf = {
@@ -179,6 +205,7 @@
         cargado: new Date().toISOString(),
         corte: fechaEnNombre(archivo) || hoyISO(fechaArchivo),
         huella: h,
+        tipo: tipo,
         hu: p.registros.length,
         matriz: matriz
       };
@@ -264,6 +291,7 @@
     estado.avance = I.calcularAvance(filtrados, estado.config.avance);
     estado.registros.forEach(function (h) { h.avance = null; });
     estado.avance.lista.forEach(function (x) { x.hu.avance = x.avance; });
+    estado.sprintRes = I.calcularSprint(filtrados, estado.config.dyd);
     renderFuente();
     renderResumen();
     renderKpis();
@@ -274,6 +302,7 @@
     renderConfig();
     renderSelectorInforme();
     renderAvance();
+    renderSprint();
     renderComparativo();
   }
 
@@ -361,6 +390,155 @@
       }).join('') : '<tr><td colspan="6">' + (q ? 'Ninguna HU sin terminar coincide con la búsqueda.' : 'Todas las HU consideradas están ejecutadas.') + '</td></tr>') + '</tbody>';
   }
 
+  // ---------- sprint ----------
+  function renderSprint() {
+    var sp = estado.sprintRes;
+    if (!sp || !$('#sp-titular')) return;
+    var cfg = estado.config.dyd;
+    $('#sp-sin-rel').hidden = !!(estado.columnas && estado.columnas.relaciones);
+
+    // Sprints disponibles: los del corte actual y los de los cortes cargados como Sprint
+    var cortesSprint = estado.informes.filter(function (i) { return i.tipo === 'sprint'; }).map(function (inf) {
+      return { inf: inf, corte: inf.corte, registros: registrosDeInforme(inf) };
+    });
+    var nombres = {};
+    sp.porSprint.forEach(function (x) { nombres[x.nombre] = true; });
+    cortesSprint.forEach(function (c) { I.paquetesDyD(c.registros, cfg).forEach(function (x) { if (x.paquete.sprint) nombres[x.paquete.sprint] = true; }); });
+    var lista = Object.keys(nombres).sort(function (a, b) { return I.compararSprint(b, a); });
+    // Por defecto: el sprint con más paquetes sin terminar; si todos terminaron, el de fecha de fin más reciente
+    var porDefecto = sp.porSprint.slice().sort(function (a, b) {
+      return (b.n - b.terminados) - (a.n - a.terminados) || (b.fin ? b.fin.getTime() : 0) - (a.fin ? a.fin.getTime() : 0);
+    })[0];
+    var actual = lista.indexOf(estado.sprint) !== -1 ? estado.sprint : porDefecto ? porDefecto.nombre : lista[0] || null;
+    $('#sp-sprint').innerHTML = lista.length ? lista.map(function (n) {
+      return '<option' + (n === actual ? ' selected' : '') + '>' + esc(n) + '</option>';
+    }).join('') : '<option value="">Sin sprints</option>';
+    $('#sp-sprint').disabled = !lista.length;
+
+    var s = sp.porSprint.find(function (x) { return x.nombre === actual; }) || null;
+    var total = sp.tabla.total || 1;
+    var regla = sp.tabla.filas.map(function (f) { return f.estados.join(' / ') + ' ' + pct(f.avance / total, 0); });
+    $('#sp-regla').textContent = 'Paquetes ' + cfg.tipo + ' relacionados con las HU, según el Sprint del paquete. Avance de cada paquete: ' +
+      regla.join(', ') + ', terminados (' + (cfg.terminados || []).join(', ') + ') 100% y otros estados 0%.';
+    var sinSprint = sp.sinSprint.n
+      ? ' ' + fmtNum.format(sp.sinSprint.n) + ' paquetes ' + cfg.tipo + ' no tienen sprint y no entran en el avance del sprint.' : '';
+    if (s) {
+      $('#sp-titular').textContent = 'Avance del sprint: ' + pct(s.avance);
+      $('#sp-detalle').textContent = fmtNum.format(s.terminados) + ' de ' + fmtNum.format(s.n) + ' paquetes ' + cfg.tipo + ' del ' + actual +
+        ' están terminados, ' + fmtNum.format(s.enPruebas) + ' en pruebas y ' + fmtNum.format(s.sinAvance) + ' sin avance.' + sinSprint;
+      $('#sp-cifras').innerHTML = [
+        ['Avance del sprint', pct(s.avance)], ['Paquetes', fmtNum.format(s.n)], ['Terminados', fmtNum.format(s.terminados)],
+        ['Puntos pendientes', fmtNum.format(s.puntos - s.puntosTerminados) + ' de ' + fmtNum.format(s.puntos)]
+      ].map(function (c) { return '<div><dt>' + esc(c[0]) + '</dt><dd>' + esc(c[1]) + '</dd></div>'; }).join('');
+    } else {
+      $('#sp-titular').textContent = actual ? 'El ' + actual + ' no tiene paquetes en este corte' : 'No hay paquetes ' + cfg.tipo + ' con sprint en este corte';
+      $('#sp-detalle').textContent = (sp.total.n ? fmtNum.format(sp.total.n) + ' paquetes ' + cfg.tipo + ' relacionados con las HU, con ' + pct(sp.total.avance) + ' de avance promedio.' : '') + sinSprint;
+      $('#sp-cifras').innerHTML = '';
+    }
+
+    // Avance de cada sprint
+    var filaSprint = function (x, clase) {
+      return '<tr' + (clase ? ' class="' + clase + '"' : '') + '><td>' + (x.nombre === 'Sin sprint' ? esc(x.nombre) : '<button class="btn-texto" type="button" data-sp="' + esc(x.nombre) + '">' + esc(x.nombre) + '</button>') +
+        '</td><td class="num">' + fmtNum.format(x.n) + '</td><td class="num">' + fmtNum.format(x.sinAvance) + '</td><td class="num">' + fmtNum.format(x.enPruebas) +
+        '</td><td class="num">' + fmtNum.format(x.terminados) + '</td><td class="num">' + fmtNum.format(x.puntosTerminados) + ' / ' + fmtNum.format(x.puntos) +
+        '</td><td>' + esc(x.fin ? fecha(x.fin) : '') + '</td><td class="av-celda">' + barraAvance(x.avance) + '<b>' + pct(x.avance) + '</b></td></tr>';
+    };
+    $('#t-sp-sprints-tabla').innerHTML = '<thead><tr><th>Sprint</th><th class="num">Paquetes</th><th class="num">Sin avance</th><th class="num">En pruebas</th><th class="num">Terminados</th><th class="num">Puntos terminados</th><th>Fin</th><th>Avance</th></tr></thead><tbody>' +
+      (sp.porSprint.length ? sp.porSprint.map(function (x) { return filaSprint(x, x.nombre === actual ? 'actual' : ''); }).join('') : '<tr><td colspan="8">Ningún paquete ' + esc(cfg.tipo) + ' tiene sprint en este corte.</td></tr>') +
+      (sp.sinSprint.n ? filaSprint(sp.sinSprint, 'sep') : '') + '</tbody>';
+
+    renderBurndown(cortesSprint, actual);
+    renderSprintId();
+  }
+
+  function renderBurndown(cortesSprint, sprint) {
+    var cfg = estado.config.dyd;
+    var mov = $('#t-sp-movidos-tabla');
+    if (!cortesSprint.length || !sprint) {
+      $('#sp-burndown-resumen').textContent = '';
+      $('#sp-burndown-nota').textContent = !sprint ? 'No hay sprints para graficar.'
+        : 'Aún no hay Excel cargados como Sprint. Al cargar un Excel elige "Sprint" (o cámbialo en Archivos cargados); con un corte por fecha se arma el Burndown.';
+      if (estado.graficos['g-burndown']) { estado.graficos['g-burndown'].destroy(); delete estado.graficos['g-burndown']; }
+      mov.innerHTML = '<tbody><tr><td>Se necesitan al menos dos cortes de Sprint para detectar los ID que pasan de un sprint a otro.</td></tr></tbody>';
+      return;
+    }
+    var bd = I.calcularBurndown(cortesSprint, sprint, cfg);
+    var porPuntos = bd.hayPuntos;
+    var u = porPuntos ? 'puntos' : 'paquetes';
+    var ultimo = bd.puntos[bd.puntos.length - 1];
+    var salieron = bd.movimientos.filter(function (m) { return m.tipo === 'salio'; }).length;
+    var entraron = bd.movimientos.length - salieron;
+    $('#sp-burndown-resumen').textContent = fmtNum.format(porPuntos ? ultimo.pendientes : ultimo.paquetesPendientes) + ' ' + u + ' pendientes al ' + fechaCorte(ultimo.corte) +
+      ' (de ' + fmtNum.format(porPuntos ? bd.iniciales : bd.inicialesPaquetes) + ' en el primer corte); ' + salieron + ' ID salieron del sprint y ' + entraron + ' entraron.';
+    $('#sp-burndown-nota').textContent = 'Cada punto es un Excel cargado como Sprint (' + bd.puntos.length + (bd.puntos.length === 1 ? ' corte' : ' cortes') + '). ' +
+      'Pendiente = ' + u + ' de los paquetes ' + cfg.tipo + ' del sprint que no están terminados. La línea ideal va de lo pendiente en el primer corte a 0 el ' + fechaCorte(bd.fin) +
+      ' (fecha de finalización más tardía de los paquetes del sprint).' + (porPuntos ? '' : ' Los paquetes no tienen puntos de historia, por eso se cuentan paquetes.') +
+      (bd.puntos.length < 2 ? ' Carga otro corte del sprint para ver la tendencia.' : '');
+
+    if (typeof Chart !== 'undefined') {
+      configurarChart();
+      var c = colores();
+      var etiquetas = bd.puntos.map(function (p) { return p.corte; });
+      if (bd.fin && etiquetas.indexOf(bd.fin) === -1) etiquetas.push(bd.fin);
+      var real = etiquetas.map(function (iso) { var p = bd.puntos.find(function (x) { return x.corte === iso; }); return p ? (porPuntos ? p.pendientes : p.paquetesPendientes) : null; });
+      var ideal = etiquetas.map(function (iso) {
+        var p = bd.puntos.find(function (x) { return x.corte === iso; });
+        if (p) return +(porPuntos ? p.ideal : p.idealPaquetes).toFixed(2);
+        return iso === bd.fin ? 0 : null;
+      });
+      grafico('g-burndown', {
+        type: 'line',
+        data: {
+          labels: etiquetas.map(fechaCorte),
+          datasets: [
+            { label: 'Pendiente real', data: real, borderColor: cssVar('--navy'), backgroundColor: cssVar('--navy'), borderWidth: 2.5, tension: 0, spanGaps: false, pointRadius: 5, pointHoverRadius: 7, pointBorderColor: c.superficie, pointBorderWidth: 2 },
+            { label: 'Ideal', data: ideal, borderColor: cssVar('--coral'), backgroundColor: cssVar('--coral'), borderWidth: 1.5, borderDash: [6, 4], pointRadius: 0, pointHoverRadius: 0, spanGaps: true, fill: false }
+          ]
+        },
+        options: {
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            x: { grid: { display: false }, border: { color: c.grid }, ticks: { maxRotation: 0, autoSkipPadding: 12 } },
+            y: { beginAtZero: true, grid: { color: c.grid }, border: { display: false }, ticks: { precision: 0 }, title: { display: true, text: porPuntos ? 'Puntos pendientes' : 'Paquetes pendientes' } }
+          },
+          plugins: {
+            legend: { position: 'top', align: 'start' },
+            tooltip: { filter: function (it) { return it.raw !== null; }, callbacks: { label: function (it) { return ' ' + it.dataset.label + ': ' + fmtPp.format(it.raw) + ' ' + u; } } }
+          }
+        }
+      });
+    }
+
+    var DESC = { salio: 'Salió', entro: 'Entró' };
+    mov.innerHTML = '<thead><tr><th>Movimiento</th><th class="num">ID</th><th>Asunto</th><th>HU</th><th>Sprint anterior</th><th>Sprint nuevo</th><th>Detectado en el corte</th><th class="num">Puntos</th><th>Estado</th></tr></thead><tbody>' +
+      (bd.movimientos.length ? bd.movimientos.map(function (m) {
+        return '<tr><td><span class="chip cambio-' + (m.tipo === 'salio' ? 'retirada' : 'nueva') + '">' + DESC[m.tipo] + '</span></td><td class="num">' + esc(m.id) + '</td><td class="asunto">' + esc(m.asunto) +
+          '</td><td>' + esc(m.hus.join(', ')) + '</td><td>' + esc(m.de) + '</td><td>' + esc(m.a) + '</td><td>' + esc(fechaCorte(m.corte)) + '</td><td class="num">' + fmtNum.format(m.puntos) + '</td><td>' + esc(m.estado) + '</td></tr>';
+      }).join('') : '<tr><td colspan="9">' + (bd.puntos.length < 2 ? 'Se necesitan al menos dos cortes de Sprint para detectar los ID que pasan de un sprint a otro.' : 'Ningún ID entró ni salió del ' + esc(sprint) + ' entre los cortes cargados.') + '</td></tr>') + '</tbody>';
+  }
+
+  function renderSprintId() {
+    var sp = estado.sprintRes;
+    if (!sp) return;
+    var tipo = estado.config.dyd.tipo;
+    var q = ($('#sp-buscar').value || '').trim().toLowerCase();
+    var solo = $('#sp-solo-pendientes').checked;
+    var filas = sp.porHU.filter(function (x) { return !solo || x.avance < 1; }).filter(function (x) {
+      return !q || [x.hu.id, x.hu.asunto, x.hu.cliente, x.hu.estado].concat(x.items.map(function (i) { return i.paquete.id + ' ' + i.paquete.asunto; })).join(' ').toLowerCase().indexOf(q) !== -1;
+    }).sort(function (a, b) { return a.avance - b.avance || Number(a.hu.id) - Number(b.hu.id); });
+    var pendientes = sp.porHU.filter(function (x) { return x.avance < 1; }).length;
+    $('#sp-id-nota').textContent = fmtNum.format(sp.porHU.length) + ' HU tienen paquetes ' + tipo + ' relacionados (' + fmtNum.format(pendientes) +
+      ' sin terminar). El avance de cada HU es el promedio de sus paquetes; solo cuentan Desarrollo y Pruebas funcionales.';
+    $('#t-sp-id-tabla').innerHTML = '<thead><tr><th class="num">ID</th><th>Asunto</th><th>Cliente</th><th>Estado de la HU</th><th>Paquetes ' + esc(tipo) + '</th><th>Avance</th></tr></thead><tbody>' +
+      (filas.length ? filas.map(function (x) {
+        return '<tr><td class="num">' + esc(x.hu.id) + '</td><td class="asunto">' + esc(x.hu.asunto) + '</td><td>' + esc(x.hu.cliente) + '</td><td>' + esc(x.hu.estado) +
+          '</td><td><ul class="sp-paquetes">' + x.items.map(function (i) {
+            return '<li><b>' + esc(i.paquete.id) + '</b> ' + esc(i.paquete.estado || 'Sin estado') + (i.paquete.sprint ? ' · ' + esc(i.paquete.sprint) : '') +
+              ' · <span' + (i.avance >= 1 ? ' class="sp-ok"' : '') + '>' + pct(i.avance, 0) + '</span></li>';
+          }).join('') + '</ul></td><td class="av-celda">' + barraAvance(x.avance) + '<b>' + pct(x.avance, 0) + '</b></td></tr>';
+      }).join('') : '<tr><td colspan="6">' + (sp.porHU.length ? 'Ninguna HU coincide con la búsqueda.' : 'No hay HU con paquetes ' + esc(tipo) + ' relacionados en este corte.') + '</td></tr>') + '</tbody>';
+  }
+
   function renderFuente() {
     var r = estado.resultado;
     var filtros = Object.keys(estado.filtros).filter(function (k) { return estado.filtros[k]; }).length;
@@ -395,11 +573,11 @@
       : 'Aún no hay indicadores con datos para este corte';
     var partes = [];
     if (fuera.length) {
-      partes.push('Fuera de meta: ' + listaNatural(fuera.map(function (k) { return k.nombre.replace(/^% /, '') + ' (' + pct(k.resultado) + ')'; })) + '.');
+      partes.push('Fuera de meta: ' + listaNatural(fuera.map(function (k) { return k.nombre.replace(/^% /, '') + ' (' + valorKpi(k, k.resultado) + ')'; })) + '.');
     }
     if (sinDatos.length) {
       partes.push((sinDatos.length === 1 ? 'Falta el dato de ' : 'Faltan los datos de ') +
-        listaNatural(sinDatos.map(function (k) { return k.unidad === 'h' ? 'horas contratadas' : k.nombre.replace(/^% /, ''); })) + ', que se ingresa en Configuración.');
+        listaNatural(sinDatos.map(function (k) { return k.unidad === 'h' ? 'horas contratadas (se ingresan en Configuración)' : esHpt(k) ? 'puntos de historia para la Efectividad' : k.nombre.replace(/^% /, ''); })) + '.');
     }
     $('#veredicto-detalle').textContent = partes.join(' ');
 
@@ -451,11 +629,29 @@
 
   function tieneMeta(k) { return k.meta !== null && k.meta !== undefined && k.meta !== ''; }
 
+  // Los KPI son porcentajes, salvo Efectividad, que está en horas por punto de historia
+  var fmtDec = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  function esHpt(k) { return k.unidad === 'h/pt'; }
+  function valorKpi(k, v, dec) {
+    if (!esHpt(k)) return pct(v, dec);
+    return v === null || v === undefined ? 'N/D' : fmtDec.format(v) + ' h/pt';
+  }
+  function textoMeta(k) {
+    return tieneMeta(k) ? (k.tipoMeta === '<=' ? '≤ ' : '≥ ') + valorKpi(k, k.meta, 0) : 'Sin meta';
+  }
+  // Escala de las diferencias: puntos porcentuales o h/pt
+  function escalaKpi(k) { return esHpt(k) ? 1 : 100; }
+  function unidadDif(k) { return esHpt(k) ? ' h/pt' : ' pp'; }
+
   function textoDetalle(k) {
     if (k.unidad === 'h') {
       return k.resultado === null
         ? fmtNum.format(k.numerador) + ' h ejecutadas; faltan las horas contratadas'
         : fmtNum.format(k.numerador) + ' h de ' + fmtNum.format(k.denominador) + ' h';
+    }
+    if (esHpt(k)) {
+      return k.resultado === null ? 'Sin HU con puntos de historia'
+        : fmtDec.format(k.numerador) + ' h en ' + fmtNum.format(k.denominador) + ' puntos';
     }
     if (k.resultado === null) return 'Sin datos en la base';
     return fmtNum.format(k.numerador) + ' de ' + fmtNum.format(k.denominador) + ' HU';
@@ -464,16 +660,17 @@
   // Gráfico de bala: valor frente a la meta, con la zona fuera de meta rayada
   function bala(k) {
     var meta = tieneMeta(k) ? k.meta : null;
-    var escala = Math.max(1, k.resultado || 0, meta || 0);
+    // En h/pt se deja margen después de la meta para ver la zona fuera de meta
+    var escala = esHpt(k) ? Math.max(k.resultado || 0, meta || 0) * 1.25 || 1 : Math.max(1, k.resultado || 0, meta || 0);
     var x = function (v) { return Math.min(100, v / escala * 100); };
-    var textoMetaCorto = meta === null ? '' : (k.tipoMeta === '<=' ? '≤ ' : '≥ ') + pct(meta, 0);
+    var textoMetaCorto = meta === null ? '' : textoMeta(k);
     var zona = '';
     if (meta !== null) {
       zona = k.tipoMeta === '<='
         ? '<span class="bala-zona" style="left:' + x(meta) + '%;right:0"></span>'
         : '<span class="bala-zona" style="left:0;width:' + x(meta) + '%"></span>';
     }
-    var etiqueta = k.nombre + ': ' + pct(k.resultado) + (meta !== null ? ', meta ' + textoMetaCorto : '');
+    var etiqueta = k.nombre + ': ' + valorKpi(k, k.resultado) + (meta !== null ? ', meta ' + textoMetaCorto : '');
     return '<div class="bala' + (k.resultado === null ? ' vacia' : '') + '" role="img" aria-label="' + esc(etiqueta) + '">' +
       '<span class="bala-pista">' + zona + '</span>' +
       (k.resultado !== null ? '<span class="bala-valor" style="width:' + x(k.resultado) + '%"></span>' : '') +
@@ -499,15 +696,15 @@
   // Desviación frente a la meta en puntos porcentuales; positiva = favorable
   function desviacion(k) {
     if (k.resultado === null || !tieneMeta(k)) return null;
-    var d = (k.resultado - k.meta) * 100;
+    var d = (k.resultado - k.meta) * escalaKpi(k);
     return k.tipoMeta === '<=' ? -d : d;
   }
   var fmtPp = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   function fraseDesviacion(k) {
     var d = desviacion(k);
     if (d === null) return k.unidad === 'h' ? 'Falta ingresar las horas contratadas.' : 'Sin datos en la base.';
-    var pp = fmtPp.format(Math.abs(d)) + ' puntos';
-    var meta = pct(k.meta, 0);
+    var pp = fmtPp.format(Math.abs(d)) + (esHpt(k) ? ' h/pt' : ' puntos');
+    var meta = valorKpi(k, k.meta, 0);
     if (k.tipoMeta === '<=') return d >= 0 ? pp + ' por debajo del máximo de ' + meta + '.' : pp + ' por encima del máximo de ' + meta + '.';
     return d >= 0 ? pp + ' por encima del mínimo de ' + meta + '.' : pp + ' por debajo del mínimo de ' + meta + '.';
   }
@@ -523,16 +720,16 @@
         var d = desviacion(x), ancho = Math.abs(d) / escala * 34;
         var cls = d >= 0 ? 'favor' : 'contra';
         return '<div class="dist-fila">' +
-          '<div class="dist-nombre"><strong>' + esc(x.nombre) + '</strong><small>' + pct(x.resultado) + ' frente a ' + (x.tipoMeta === '<=' ? '≤ ' : '≥ ') + pct(x.meta, 0) + '</small></div>' +
+          '<div class="dist-nombre"><strong>' + esc(x.nombre) + '</strong><small>' + valorKpi(x, x.resultado) + ' frente a ' + textoMeta(x) + '</small></div>' +
           '<div class="dist-pista" role="img" aria-label="' + esc(x.nombre + ': ' + fraseDesviacion(x)) + '">' +
             '<span class="dist-barra ' + cls + '" style="' + (d >= 0 ? 'left:50%' : 'right:50%') + ';width:' + ancho + '%"></span>' +
-            '<span class="dist-valor ' + cls + '" style="' + (d >= 0 ? 'left:calc(50% + ' + ancho + '% + 8px)' : 'right:calc(50% + ' + ancho + '% + 8px)') + '">' + (d >= 0 ? '+' : '−') + fmtPp.format(Math.abs(d)) + ' pp</span>' +
+            '<span class="dist-valor ' + cls + '" style="' + (d >= 0 ? 'left:calc(50% + ' + ancho + '% + 8px)' : 'right:calc(50% + ' + ancho + '% + 8px)') + '">' + (d >= 0 ? '+' : '−') + fmtPp.format(Math.abs(d)) + unidadDif(x) + '</span>' +
           '</div>' +
           '<div class="dist-estado">' + pill(x.estado) + '</div>' +
           '</div>';
       }).join('') +
       (sin.length ? '<p class="nota">Sin datos para comparar: ' + esc(listaNatural(sin.map(function (x) { return x.nombre + (x.unidad === 'h' ? ' (faltan las horas contratadas)' : ''); }))) + '.</p>' : '') +
-      '<p class="nota">pp = puntos porcentuales de diferencia entre el resultado y la meta.</p>';
+      '<p class="nota">pp = puntos porcentuales de diferencia entre el resultado y la meta; h/pt = horas por punto de historia.</p>';
   }
 
   function renderPorEstado() {
@@ -545,15 +742,15 @@
     $('#vista-estado').innerHTML = '<div class="grupos">' + grupos.map(function (g) {
       return '<section class="grupo ' + g[1] + '"><h3>' + ICONOS[g[1] === 'fuera' ? 'FUERA DE META' : g[1] === 'en-meta' ? 'EN META' : 'SIN DATOS'] + esc(g[0]) + ' <span>' + g[2].length + '</span></h3>' +
         (g[2].length ? '<ul>' + g[2].map(function (x) {
-          return '<li><div class="g-linea"><span>' + esc(x.nombre) + '</span><b>' + pct(x.resultado) + '</b></div>' +
+          return '<li><div class="g-linea"><span>' + esc(x.nombre) + '</span><b>' + valorKpi(x, x.resultado) + '</b></div>' +
             '<p>' + esc(fraseDesviacion(x)) + (x.resultado !== null ? ' Base: ' + esc(textoDetalle(x)) + '.' : '') + '</p></li>';
         }).join('') + '</ul>' : '<p class="g-vacio">Ningún indicador en este grupo.</p>') + '</section>';
     }).join('') + '</div>';
   }
 
   function renderPorCliente() {
-    var ids = ['deuda', 'backlog', 'refinement', 'alcance', 'ambiguedad'];
-    var cortos = { deuda: 'Deuda técnica', backlog: 'Cumplimiento backlog', refinement: 'Precisión refinement', alcance: 'Cambios de alcance', ambiguedad: 'Retrabajo' };
+    var ids = ['deuda', 'backlog', 'refinement', 'alcance', 'ambiguedad', 'efectividad'];
+    var cortos = { deuda: 'Deuda técnica', backlog: 'Cumplimiento backlog', refinement: 'Precisión refinement', alcance: 'Cambios de alcance', ambiguedad: 'Retrabajo', efectividad: 'Efectividad' };
     var porCliente = {};
     estado.filtrados.forEach(function (r) { (porCliente[r.cliente] = porCliente[r.cliente] || []).push(r); });
     var filas = Object.keys(porCliente).map(function (c) {
@@ -563,11 +760,11 @@
     var celda = function (k) {
       var cls = k.estado === 'EN META' ? 'en-meta' : k.estado === 'FUERA DE META' ? 'fuera' : 'nd';
       return '<td class="mc ' + cls + '" title="' + esc(k.nombre + ': ' + textoDetalle(k)) + '">' +
-        (k.resultado === null ? '<span class="mc-nd">sin datos</span>' : ICONOS[k.estado] + pct(k.resultado)) + '</td>';
+        (k.resultado === null ? '<span class="mc-nd">sin datos</span>' : ICONOS[k.estado] + valorKpi(k, k.resultado)) + '</td>';
     };
     var total = plantilla();
     $('#vista-cliente').innerHTML = '<div class="tabla-scroll"><table class="tabla matriz"><thead><tr><th>Cliente</th><th class="num">HU</th>' +
-      ids.map(function (id) { var k = total.find(function (x) { return x.id === id; }); return '<th>' + esc(cortos[id]) + '<small>' + (k.tipoMeta === '<=' ? '≤ ' : '≥ ') + pct(k.meta, 0) + '</small></th>'; }).join('') +
+      ids.map(function (id) { var k = total.find(function (x) { return x.id === id; }); return '<th>' + esc(cortos[id]) + '<small>' + esc(textoMeta(k)) + '</small></th>'; }).join('') +
       '</tr></thead><tbody>' + filas.map(function (f) {
         return '<tr><td>' + esc(f.cliente) + '</td><td class="num">' + f.n + '</td>' +
           ids.map(function (id) { return celda(f.kpis.find(function (x) { return x.id === id; })); }).join('') + '</tr>';
@@ -585,7 +782,7 @@
       k.map(function (x) {
         return '<div class="sc-fila" role="row">' +
           '<div class="sc-nombre" role="cell"><strong>' + esc(x.nombre) + '</strong><small>' + esc(x.definicion) + '</small></div>' +
-          '<div class="sc-valor' + (x.resultado === null ? ' nd' : '') + '" role="cell">' + pct(x.resultado) + '</div>' +
+          '<div class="sc-valor' + (x.resultado === null ? ' nd' : '') + '" role="cell">' + (esHpt(x) && x.resultado !== null ? fmtDec.format(x.resultado) + '<small class="unidad">h/pt</small>' : valorKpi(x, x.resultado)) + '</div>' +
           '<div class="sc-bala" role="cell">' + bala(x) + '</div>' +
           '<div class="sc-detalle" role="cell">' + esc(textoDetalle(x)) + '</div>' +
           '<div class="sc-estado" role="cell">' + pill(x.estado) + '</div>' +
@@ -872,11 +1069,15 @@
   var COLS_DETALLE = [
     ['id', 'ID'], ['asunto', 'Asunto'], ['cliente', 'Cliente'], ['estado', 'Estado'], ['fase', 'Fase'],
     ['enFlujo', 'En flujo'], ['tipoSolicitud', 'Tipo de Solicitud'], ['sprint', 'Sprint'], ['modulo', 'Módulo'],
-    ['responsable', 'Responsable'], ['asignado', 'Asignado a'], ['trabajoTotal', 'Trabajo total (h)'], ['avance', 'Avance'],
+    ['responsable', 'Responsable'], ['asignado', 'Asignado a'], ['trabajoTotal', 'Trabajo total (h)'],
+    ['puntos', 'Puntos de historia'], ['tiempo', 'Tiempo invertido (h)'], ['avance', 'Avance'],
     ['fechaFin', 'Fecha finalización'], ['precision', 'Precisión HU']
   ];
   function colsDetalle() {
-    return COLS_DETALLE.filter(function (c) { return c[0] !== 'responsable' || (estado.columnas && estado.columnas.responsable); });
+    // Las columnas opcionales solo se muestran si vienen en el Excel
+    return COLS_DETALLE.filter(function (c) {
+      return ['responsable', 'puntos', 'tiempo'].indexOf(c[0]) === -1 || (estado.columnas && estado.columnas[c[0]]);
+    });
   }
 
   function filasDetalle() {
@@ -897,7 +1098,7 @@
       var va = a[o.campo], vb = b[o.campo], res;
       if (va instanceof Date || vb instanceof Date) res = (va ? va.getTime() : Infinity) - (vb ? vb.getTime() : Infinity);
       else if (o.campo === 'avance') res = (va === null || va === undefined ? -1 : va) - (vb === null || vb === undefined ? -1 : vb);
-      else if (o.campo === 'id' || o.campo === 'trabajoTotal') res = Number(va) - Number(vb) || String(va).localeCompare(String(vb));
+      else if (['id', 'trabajoTotal', 'puntos', 'tiempo'].indexOf(o.campo) !== -1) res = Number(va) - Number(vb) || String(va).localeCompare(String(vb));
       else res = String(va || '').localeCompare(String(vb || ''), 'es');
       return o.asc ? res : -res;
     });
@@ -915,7 +1116,9 @@
         var v = r[c[0]];
         if (c[0] === 'fechaFin') v = fecha(v);
         if (c[0] === 'avance') return '<td class="num">' + (v === null || v === undefined ? '—' : pct(v, 0)) + '</td>';
-        var cls = c[0] === 'asunto' ? ' class="asunto"' : c[0] === 'id' || c[0] === 'trabajoTotal' ? ' class="num"' : '';
+        var cls = c[0] === 'asunto' ? ' class="asunto"' : ['id', 'trabajoTotal', 'puntos', 'tiempo'].indexOf(c[0]) !== -1 ? ' class="num"' : '';
+        if (c[0] === 'tiempo') v = v ? fmtDec.format(v) : '';
+        if (c[0] === 'puntos') v = v || '';
         if (c[0] === 'enFlujo' || c[0] === 'fase') return '<td><span class="chip">' + esc(v) + '</span></td>';
         if (c[0] === 'estado' && r.estadoOriginal && r.estadoOriginal !== r.estado) {
           return '<td>' + esc(v) + '<small class="estado-erp">En el ERP: ' + esc(r.estadoOriginal) + '</small></td>';
@@ -958,12 +1161,12 @@
   // Variación en puntos; favorable según el tipo de meta
   function celdaVariacion(k, a, b) {
     if (a === null || b === null) return '<td class="num var-nd">sin dato</td>';
-    var d = (b - a) * 100;
+    var d = (b - a) * escalaKpi(k);
     if (Math.abs(d) < 0.05) return '<td class="num var-igual">sin cambio</td>';
     var cls = 'var-neutra';
     if (tieneMeta(k)) cls = (k.tipoMeta === '<=' ? d < 0 : d > 0) ? 'var-mejora' : 'var-empeora';
     var flecha = d > 0 ? '▲' : '▼';
-    return '<td class="num ' + cls + '"><span aria-hidden="true">' + flecha + '</span> ' + (d > 0 ? '+' : '−') + fmtPp.format(Math.abs(d)) + ' pp' +
+    return '<td class="num ' + cls + '"><span aria-hidden="true">' + flecha + '</span> ' + (d > 0 ? '+' : '−') + fmtPp.format(Math.abs(d)) + unidadDif(k) +
       (cls === 'var-mejora' ? '<span class="sr"> (mejora)</span>' : cls === 'var-empeora' ? '<span class="sr"> (empeora)</span>' : '') + '</td>';
   }
 
@@ -995,15 +1198,16 @@
     var mejoran = 0, empeoran = 0;
     var filas = rB.kpis.map(function (kB, i) {
       var kA = rA.kpis[i];
-      var d = kA.resultado === null || kB.resultado === null ? null : kB.resultado - kA.resultado;
+      var d = kA.resultado === null || kB.resultado === null ? null : (kB.resultado - kA.resultado) * escalaKpi(kB) / 100;
       if (d !== null && Math.abs(d) >= 0.0005 && tieneMeta(kB)) {
         if (kB.tipoMeta === '<=' ? d < 0 : d > 0) mejoran++; else empeoran++;
       }
-      var meta = tieneMeta(kB) ? (kB.tipoMeta === '<=' ? '≤ ' : '≥ ') + pct(kB.meta, 0) : 'Sin meta';
+      var meta = textoMeta(kB);
       var cambioEstado = kA.estado === kB.estado ? pill(kB.estado) : pill(kA.estado) + '<span class="comp-a" aria-label="pasa a">→</span>' + pill(kB.estado);
-      return '<tr' + (i === 6 ? ' class="sep"' : '') + '><td><strong>' + esc(kB.nombre) + '</strong></td><td>' + meta + '</td>' +
-        '<td class="num">' + pct(kA.resultado) + '<small>' + esc(textoDetalle(kA)) + '</small></td>' +
-        '<td class="num">' + pct(kB.resultado) + '<small>' + esc(textoDetalle(kB)) + '</small></td>' +
+      var sep = i > 0 && rB.kpis[i - 1].grupo !== kB.grupo;
+      return '<tr' + (sep ? ' class="sep"' : '') + '><td><strong>' + esc(kB.nombre) + '</strong></td><td>' + meta + '</td>' +
+        '<td class="num">' + valorKpi(kA, kA.resultado) + '<small>' + esc(textoDetalle(kA)) + '</small></td>' +
+        '<td class="num">' + valorKpi(kB, kB.resultado) + '<small>' + esc(textoDetalle(kB)) + '</small></td>' +
         celdaVariacion(kB, kA.resultado, kB.resultado) + '<td class="comp-estado">' + cambioEstado + '</td></tr>';
     });
     $('#t-comp-kpi-tabla').innerHTML = '<thead><tr><th>Indicador</th><th>Meta</th><th class="num">' + esc(fechaCorte(infA.corte)) + '</th><th class="num">' +
@@ -1044,7 +1248,7 @@
     });
     var puntos = orden.map(function (inf) {
       var k = resultadoDeInforme(inf).kpis.find(function (x) { return x.id === kpiDef.id; });
-      return { inf: inf, k: k, v: k.resultado === null ? null : +(k.resultado * 100).toFixed(2) };
+      return { inf: inf, k: k, v: k.resultado === null ? null : +(k.resultado * escalaKpi(k)).toFixed(2) };
     });
     var k0 = puntos[puntos.length - 1].k;
     var sinDato = puntos.filter(function (p) { return p.v === null; }).length;
@@ -1062,7 +1266,7 @@
     }];
     if (tieneMeta(k0)) {
       datasets.push({
-        label: 'Meta ' + (k0.tipoMeta === '<=' ? '≤ ' : '≥ ') + pct(k0.meta, 0), data: puntos.map(function () { return +(k0.meta * 100).toFixed(2); }),
+        label: 'Meta ' + textoMeta(k0), data: puntos.map(function () { return +(k0.meta * escalaKpi(k0)).toFixed(2); }),
         borderColor: c.texto, borderWidth: 1.5, borderDash: [5, 4], pointRadius: 0, pointHoverRadius: 0, fill: false
       });
     }
@@ -1073,13 +1277,13 @@
         interaction: { mode: 'index', intersect: false },
         scales: {
           x: { grid: { display: false }, border: { color: c.grid }, ticks: { maxRotation: 0, autoSkipPadding: 12 } },
-          y: { beginAtZero: true, grid: { color: c.grid }, border: { display: false }, ticks: { callback: function (v) { return v + '%'; } } }
+          y: { beginAtZero: true, grid: { color: c.grid }, border: { display: false }, ticks: { callback: function (v) { return v + (esHpt(kpiDef) ? ' h/pt' : '%'); } } }
         },
         plugins: {
           legend: { position: 'top', align: 'start' },
           tooltip: { callbacks: {
             title: function (its) { return etiquetaInforme(puntos[its[0].dataIndex].inf); },
-            label: function (it) { return ' ' + it.dataset.label + ': ' + (it.raw === null ? 'sin dato' : fmtPp.format(it.raw) + '%'); }
+            label: function (it) { return ' ' + it.dataset.label + ': ' + (it.raw === null ? 'sin dato' : fmtPp.format(it.raw) + (esHpt(kpiDef) ? ' h/pt' : '%')); }
           } }
         }
       }
@@ -1116,17 +1320,20 @@
     var nSel = Object.keys(estado.seleccion).length;
     var todos = lista.length && nSel === lista.length;
     $('#t-informes-tabla').innerHTML = '<thead><tr><th class="sel"><input type="checkbox" id="sel-todos" aria-label="Seleccionar todos los archivos"' +
-      (todos ? ' checked' : '') + (lista.length ? '' : ' disabled') + '></th><th>Fecha de corte</th><th>Nombre</th><th>Archivo</th><th>Cargado</th><th class="num">HU únicas</th><th></th></tr></thead><tbody>' +
+      (todos ? ' checked' : '') + (lista.length ? '' : ' disabled') + '></th><th>Fecha de corte</th><th>Nombre</th><th>Tipo</th><th>Archivo</th><th>Cargado</th><th class="num">HU únicas</th><th></th></tr></thead><tbody>' +
       (lista.length ? lista.map(function (i) {
         var actual = i.id === estado.informeId;
         return '<tr' + (actual ? ' class="actual"' : '') + '>' +
           '<td class="sel"><input type="checkbox" data-inf-sel="' + esc(i.id) + '"' + (estado.seleccion[i.id] ? ' checked' : '') + ' aria-label="Seleccionar ' + esc(i.nombre) + '"></td>' +
           '<td><input type="date" data-inf-corte="' + esc(i.id) + '" value="' + esc(i.corte || '') + '" aria-label="Fecha de corte"></td>' +
           '<td><input type="text" data-inf-nombre="' + esc(i.id) + '" value="' + esc(i.nombre) + '" aria-label="Nombre del informe"></td>' +
+          '<td><select data-inf-tipo="' + esc(i.id) + '" aria-label="Tipo de carga">' + Object.keys(TIPOS_CARGA).map(function (t) {
+            return '<option value="' + t + '"' + ((i.tipo || 'gestion') === t ? ' selected' : '') + '>' + (t === 'gestion' ? 'Gestión' : 'Sprint') + '</option>';
+          }).join('') + '</select></td>' +
           '<td>' + esc(i.archivo) + '</td><td>' + esc(new Date(i.cargado).toLocaleDateString('es-CO')) + '</td><td class="num">' + fmtNum.format(i.hu || 0) + '</td>' +
           '<td class="acciones-fila">' + (actual ? '<span class="chip">En pantalla</span>' : '<button class="btn-texto" type="button" data-inf-ver="' + esc(i.id) + '">Ver</button>') +
           '<button class="btn-texto peligro" type="button" data-inf-borrar="' + esc(i.id) + '">Eliminar</button></td></tr>';
-      }).join('') : '<tr><td colspan="7">No hay archivos cargados. Usa Cargar otro Excel para agregar uno.</td></tr>') + '</tbody>';
+      }).join('') : '<tr><td colspan="8">No hay archivos cargados. Usa Cargar otro Excel para agregar uno.</td></tr>') + '</tbody>';
     actualizarSeleccion();
   }
 
@@ -1206,7 +1413,8 @@
         return Historico.guardar({
           id: String(i.id), nombre: String(i.nombre || i.archivo || 'Informe importado'), archivo: String(i.archivo || ''),
           hoja: String(i.hoja || 'Hoja1'), cargado: i.cargado || new Date().toISOString(),
-          corte: /^\d{4}-\d{2}-\d{2}$/.test(i.corte) ? i.corte : hoyISO(), huella: i.huella, hu: Number(i.hu) || 0, matriz: i.matriz
+          corte: /^\d{4}-\d{2}-\d{2}$/.test(i.corte) ? i.corte : hoyISO(), huella: i.huella, tipo: i.tipo === 'sprint' ? 'sprint' : 'gestion',
+          hu: Number(i.hu) || 0, matriz: i.matriz
         });
       })).then(refrescarInformes).then(function (lista) {
         toast(nuevos.length ? nuevos.length + ' informe(s) importado(s); ' + (entrada.length - nuevos.length) + ' ya estaban o no eran válidos.' : 'No había informes nuevos para importar.');
@@ -1221,10 +1429,10 @@
     var k = estado.resultado.kpis;
     $('#t-ficha').innerHTML = '<thead><tr><th>N°</th><th>Indicador (KPI)</th><th>Definición</th><th>Fórmula de cálculo</th><th>Frecuencia</th><th>Meta</th><th>Responsable</th><th>Cálculo con la base</th><th class="num">Resultado actual</th><th>Estado</th></tr></thead><tbody>' +
       k.map(function (x, i) {
-        var meta = x.meta === null || x.meta === undefined || x.meta === '' ? 'Sin meta' : (x.tipoMeta === '<=' ? '≤ ' : '≥ ') + pct(x.meta, 0);
+        var meta = textoMeta(x);
         return '<tr><td>' + (i + 1) + '</td><td><strong>' + esc(x.nombre) + '</strong></td><td>' + esc(x.definicion) + '</td><td>' + esc(x.formula) +
           '</td><td>' + esc(x.frecuencia) + '</td><td>' + meta + '</td><td>' + esc(x.responsable) + '</td><td>' + esc(x.criterio) +
-          '</td><td class="num">' + pct(x.resultado) + '</td><td>' + pill(x.estado) + '</td></tr>';
+          '</td><td class="num">' + valorKpi(x, x.resultado) + '</td><td>' + pill(x.estado) + '</td></tr>';
       }).join('') + '</tbody>';
   }
 
@@ -1233,14 +1441,14 @@
     if (renderConfig.hecho) return;
     renderConfig.hecho = true;
     var metas = estado.config.metas, par = Object.assign({}, I.PARAMETROS, estado.config.parametros);
-    $('#cfg-metas').innerHTML = '<div class="fila-cfg"><span class="cab">Indicador</span><span class="cab">Tipo</span><span class="cab">Meta (%)</span></div>' +
+    $('#cfg-metas').innerHTML = '<div class="fila-cfg"><span class="cab">Indicador</span><span class="cab">Tipo</span><span class="cab">Meta (% o h/pt)</span></div>' +
       I.KPIS.map(function (k) {
         var m = metas[k.id] || {};
         var meta = m.meta !== undefined ? m.meta : k.meta;
         var tipo = m.tipoMeta !== undefined ? m.tipoMeta : k.tipoMeta;
         return '<div class="fila-cfg"><span>' + esc(k.nombre) + '</span>' +
           '<select data-meta-tipo="' + k.id + '" aria-label="Tipo de meta"><option value="">—</option><option' + (tipo === '<=' ? ' selected' : '') + '>&lt;=</option><option' + (tipo === '>=' ? ' selected' : '') + '>&gt;=</option></select>' +
-          '<input type="number" min="0" max="1000" step="0.1" data-meta="' + k.id + '" value="' + (meta === null || meta === '' ? '' : +(meta * 100).toFixed(2)) + '" aria-label="Meta"></div>';
+          '<input type="number" min="0" max="1000" step="0.1" data-meta="' + k.id + '" value="' + (meta === null || meta === '' ? '' : +(meta * escalaKpi(k)).toFixed(2)) + '" aria-label="Meta' + (esHpt(k) ? ' en horas por punto' : ' en %') + '"></div>';
       }).join('');
     var campos = [
       ['horasContratadas', 'Horas contratadas (KPI Control de consumo de horas)', 'number'],
@@ -1256,6 +1464,10 @@
     $('#cfg-estados').value = estado.config.estados.map(function (e) { return e[0] + ' => ' + e[1]; }).join('\n');
     $('#cfg-avance').value = estado.config.avance.acciones.map(function (x) { return x.accion + ' => ' + +(x.esfuerzo * 100).toFixed(2) + ' => ' + x.estados.join('; '); }).join('\n');
     $('#cfg-avance-actual').checked = !!estado.config.avance.incluirActual;
+    var dyd = estado.config.dyd;
+    $('#cfg-dyd-tipo').value = dyd.tipo;
+    $('#cfg-dyd').value = dyd.acciones.map(function (x) { return x.accion + ' => ' + +(x.esfuerzo * 100).toFixed(2) + ' => ' + x.estados.join('; '); }).join('\n');
+    $('#cfg-dyd-terminados').value = (dyd.terminados || []).join('; ');
     $('#cfg-equivalencias').value = estado.config.equivalencias.map(function (e) { return e[0] + ' => ' + e[1]; }).join('\n');
   }
 
@@ -1264,7 +1476,7 @@
     I.KPIS.forEach(function (k) {
       var v = $('[data-meta="' + k.id + '"]').value;
       var t = $('[data-meta-tipo="' + k.id + '"]').value;
-      metas[k.id] = { meta: v === '' ? null : Number(v) / 100, tipoMeta: t };
+      metas[k.id] = { meta: v === '' ? null : Number(v) / escalaKpi(k), tipoMeta: t };
     });
     estado.config.metas = metas;
     guardar('metas', metas);
@@ -1305,6 +1517,28 @@
     toast(reglas.length + ' estados aplicados');
   }
 
+  function guardarDyd() {
+    var acciones = [], error = '';
+    $('#cfg-dyd').value.split(/\r?\n/).forEach(function (l) {
+      if (!l.trim()) return;
+      var p = l.split('=>').map(function (x) { return x.trim(); });
+      var n = Number(String(p[1] || '').replace('%', '').replace(',', '.'));
+      if (p.length !== 3 || !p[0] || isNaN(n)) { error = error || l; return; }
+      acciones.push({ accion: p[0], esfuerzo: n / 100, estados: p[2].split(';').map(function (x) { return x.trim(); }).filter(Boolean) });
+    });
+    if (error) { toast('Línea no válida: "' + error + '". Formato: Acción => % => estados separados por ;'); return; }
+    if (!acciones.length) { toast('Agrega al menos una acción.'); return; }
+    var tipo = $('#cfg-dyd-tipo').value.trim();
+    if (!tipo) { toast('Indica el tipo de paquete (por ejemplo Diseño y Desarrollo).'); return; }
+    estado.config.dyd = {
+      tipo: tipo, acciones: acciones, incluirActual: false,
+      terminados: $('#cfg-dyd-terminados').value.split(';').map(function (x) { return x.trim(); }).filter(Boolean)
+    };
+    guardar('dyd', estado.config.dyd);
+    actualizar();
+    toast('Avance de Diseño y Desarrollo aplicado');
+  }
+
   function guardarAvance() {
     var acciones = [], error = '';
     $('#cfg-avance').value.split(/\r?\n/).forEach(function (l) {
@@ -1338,7 +1572,7 @@
   function aplicarTema(t) {
     if (t) document.documentElement.setAttribute('data-theme', t);
     else document.documentElement.removeAttribute('data-theme');
-    if (estado.resultado) { renderDistribucion(); renderSeguimiento(); renderComparativo(); }
+    if (estado.resultado) { renderDistribucion(); renderSeguimiento(); renderComparativo(); renderSprint(); }
   }
   function temaActual() {
     var t = document.documentElement.getAttribute('data-theme');
@@ -1404,14 +1638,22 @@
     $('#sel-anio').addEventListener('change', function (e) { guardarParametros({ anio: e.target.value === 'todos' ? 'todos' : Number(e.target.value) }); });
     $('#btn-guardar-equivalencias').addEventListener('click', guardarEquivalencias);
     $('#btn-guardar-avance').addEventListener('click', guardarAvance);
+    $('#btn-guardar-dyd').addEventListener('click', guardarDyd);
+    $('#sp-sprint').addEventListener('change', function (e) { estado.sprint = e.target.value; guardar('sprint', estado.sprint); renderSprint(); });
+    $('#t-sp-sprints-tabla').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-sp]'); if (!b) return;
+      estado.sprint = b.getAttribute('data-sp'); guardar('sprint', estado.sprint); renderSprint();
+    });
+    $('#sp-buscar').addEventListener('input', renderSprintId);
+    $('#sp-solo-pendientes').addEventListener('change', renderSprintId);
     $('#av-agrupar').addEventListener('click', function (e) {
       var b = e.target.closest('[data-av-grupo]'); if (!b) return;
       estado.avGrupo = b.getAttribute('data-av-grupo'); guardar('avGrupo', estado.avGrupo); renderAvance();
     });
     $('#av-buscar').addEventListener('input', renderAvanceHU);
     $('#btn-restaurar').addEventListener('click', function () {
-      estado.config = { metas: {}, parametros: {}, estados: I.ESTADOS.slice(), equivalencias: I.EQUIVALENCIAS.slice(), avance: JSON.parse(JSON.stringify(I.AVANCE)) };
-      ['metas', 'parametros', 'estados', 'equivalencias', 'avance', 'manuales'].forEach(function (k) { try { localStorage.removeItem(CLAVE + k); } catch (e) { /* */ } });
+      estado.config = { metas: {}, parametros: {}, estados: I.ESTADOS.slice(), equivalencias: I.EQUIVALENCIAS.slice(), avance: JSON.parse(JSON.stringify(I.AVANCE)), dyd: JSON.parse(JSON.stringify(I.AVANCE_DYD)) };
+      ['metas', 'parametros', 'estados', 'equivalencias', 'avance', 'dyd', 'manuales'].forEach(function (k) { try { localStorage.removeItem(CLAVE + k); } catch (e) { /* */ } });
       renderConfig.hecho = false;
       reparsear();
       toast('Configuración restaurada');
@@ -1456,6 +1698,7 @@
       }
       if (t.hasAttribute('data-inf-corte') && t.value) cambiarInforme(t.getAttribute('data-inf-corte'), { corte: t.value });
       if (t.hasAttribute('data-inf-nombre') && t.value.trim()) cambiarInforme(t.getAttribute('data-inf-nombre'), { nombre: t.value.trim() });
+      if (t.hasAttribute('data-inf-tipo')) cambiarInforme(t.getAttribute('data-inf-tipo'), { tipo: t.value });
     });
     $('#t-informes-tabla').addEventListener('click', function (e) {
       var ver = e.target.closest('[data-inf-ver]'), borrar = e.target.closest('[data-inf-borrar]');
