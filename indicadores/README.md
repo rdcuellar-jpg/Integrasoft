@@ -17,7 +17,9 @@ cálculos de las hojas *Datos Indicadores*, *Indicadores Seguimiento*, *Ficha de
 2. Pulsa **Cargar Excel** (o arrastra el archivo) y selecciona el Excel. Sirve directamente el `.xls` de paquetes de
    trabajo tal como se descarga de InteTrack (hoja *Paquetes de trabajo*) o el libro `Base para Indicadores.xlsx`.
    Se lee la hoja `Hoja1`; si no existe, se usa la primera hoja que tenga las columnas `ID` y `Estado`.
-3. Cada Excel cargado se guarda como un **informe** en el histórico del navegador, con una fecha de corte
+3. Al cargar un Excel la app pregunta si corresponde a **Indicadores de gestión** o a un **Sprint**. Los cortes de
+   Sprint se usan además para el Burndown. El tipo se puede cambiar después en *Archivos cargados*.
+4. Cada Excel cargado se guarda como un **informe** en el histórico del navegador, con una fecha de corte
    (la fecha AAAA-MM-DD del nombre del archivo, como en las descargas de InteTrack; si no tiene, la fecha de
    modificación del archivo; se puede cambiar). Si se vuelve a cargar el mismo archivo
    no se duplica. Al volver a abrir la app se muestra el último informe visto.
@@ -30,8 +32,12 @@ La fila de encabezados se detecta automáticamente (en la base actual es la fila
 *Paquetes de trabajo* (el bloque *Relaciones* repite encabezados y se ignora):
 
 `ID`, `Asunto`, `Sprint`, `Tipo`, `Tipo de Solicitud`, `Cliente`, `Estado`, `Trabajo`, `Trabajo total`, `Asignado a`,
-`Fecha de inicio`, `Fecha de finalización` (dd-mm-aaaa o fecha de Excel), `Precisión HU` y `Módulo afectado`.
-Si la hoja trae además `Responsable`, se habilita su filtro y su columna en el detalle.
+`Fecha de inicio`, `Fecha de finalización` (dd-mm-aaaa o fecha de Excel), `Precisión HU`, `Módulo afectado`,
+`Puntos de Historia` y `Tiempo invertido`. Si la hoja trae además `Responsable`, se habilita su filtro y su columna en el detalle.
+
+Del bloque *Relaciones* (desde la columna `Tipo de relación`) se leen los paquetes de trabajo relacionados con cada HU
+(`ID`, `Sprint`, `Tipo`, `Estado`, `Puntos de Historia`, `Fecha de finalización`…). Los de Tipo *Diseño y Desarrollo*
+alimentan la pestaña **Sprint**.
 
 ## Reglas de cálculo (igual que las hojas Base Calculo y Datos Indicadores)
 
@@ -56,6 +62,7 @@ Si la hoja trae además `Responsable`, se habilita su filtro y su columna en el 
   | Precisión backlog refinement | HU consideradas sin marca en Precisión HU / HU consideradas | ≥ 85% |
   | % Cambios de alcance post-firma | HU con Precisión HU = "Cambio de Alcance" / HU consideradas | ≤ 10% |
   | % Retrabajo por ambigüedad | HU con Precisión HU = "Retrabajo*" / HU consideradas | ≤ 8% |
+  | Efectividad (horas por punto de historia) | Σ Tiempo invertido / Σ Puntos de Historia de las HU consideradas con puntos | ≤ 8 h/pt |
   | % HU en Análisis / Desarrollo / Pruebas | HU en la fase / HU consideradas | sin meta |
   | % HU Abiertas | HU con En flujo = Abierto / HU consideradas | sin meta |
 - El gráfico mensual muestra el año elegido (por defecto el actual); las HU sin fecha o fuera del año se informan en la nota.
@@ -65,7 +72,8 @@ Si la hoja trae además `Responsable`, se habilita su filtro y su columna en el 
 
 En la pestaña **Configuración** se editan, y quedan guardados en el navegador: las metas, los parámetros
 (horas contratadas, Tipo de Solicitud excluido del cumplimiento, marcas de Precisión HU con comodines `*` y `?`),
-la tabla de fase por estado, el avance por estado y los estados equivalentes.
+la tabla de fase por estado, el avance por estado, el avance de Diseño y Desarrollo (tipo de paquete, acciones y estados
+terminados) y los estados equivalentes.
 
 ## Vistas
 
@@ -94,15 +102,27 @@ Arriba se elige el **informe** (corte) que se quiere ver; todas las vistas muest
   asignado, y la lista de HU sin terminar. La tabla de acciones, sus % y estados, y la opción de sumar también la
   acción del estado actual se editan en Configuración. El Detalle de HU muestra el avance de cada HU y el
   Comparativo de informes compara el avance promedio entre cortes.
+- **Sprint**: se calcula con los paquetes *Diseño y Desarrollo* relacionados con las HU (bloque Relaciones). Solo cuentan
+  Desarrollo (45 %) y Pruebas funcionales (25 %), escalados a 100 %: un paquete *En desarrollo* lleva 0 %, uno en
+  *Pruebas funcionales y Documentación* 64 % (45 de 70), los terminados (Despliegue, Entrega…, Cierre…, Garantía…) 100 % y
+  los demás estados 0 %. Todo se edita en Configuración.
+  - **Avance del sprint**: promedio del avance de los paquetes de cada sprint, según el Sprint del paquete (los paquetes sin
+    sprint se informan aparte y no entran), con paquetes terminados, en pruebas, sin avance y puntos terminados.
+  - **Burndown**: puntos de historia pendientes (paquetes no terminados) del sprint elegido en cada Excel cargado como
+    Sprint, ordenados por fecha de corte, frente a una línea ideal que llega a 0 en la fecha de finalización más tardía
+    de los paquetes del sprint. Lista los **ID que pasaron de un sprint a otro** entre cortes (salieron o entraron).
+    Si los paquetes no tienen puntos, se cuentan paquetes.
+  - **Avance por ID**: avance de cada HU como el promedio de sus paquetes Diseño y Desarrollo, con el estado, sprint y
+    avance de cada paquete; se puede buscar y ver solo las HU sin terminar.
 - **Comparativo de informes**: elige un informe base y otro para comparar, y muestra:
-  - los 10 indicadores de cada corte, la variación en puntos (verde si mejora frente a la meta, rojo si empeora)
+  - los 11 indicadores de cada corte, la variación en puntos (verde si mejora frente a la meta, rojo si empeora)
     y el cambio de estado;
   - el volumen de HU (únicas, consideradas, abiertas, cerradas, por fase y horas) con su diferencia;
   - la evolución de un indicador en todos los informes guardados, ordenados por fecha de corte, con la meta;
   - las HU que cambiaron entre los dos cortes: nuevas, cerradas, reabiertas, con cambio de estado y retiradas
     (las que ya no aparecen entre las consideradas del informe posterior).
   Los filtros activos y la configuración actual se aplican a los dos informes.
-- **Archivos cargados**: lista de los Excel guardados en el navegador. Permite cambiar el nombre o la fecha de corte,
+- **Archivos cargados**: lista de los Excel guardados en el navegador. Permite cambiar el nombre, la fecha de corte o el tipo (Gestión o Sprint),
   abrir un archivo, **eliminar** uno, varios (con las casillas y *Eliminar seleccionados*) o todos, y
   **exportar o importar el histórico** (archivo JSON) para llevarlo a otro equipo o respaldarlo. Eliminar pide
   confirmación y no modifica el Excel original. También se llega con *Administrar archivos* en el encabezado.
@@ -135,4 +155,5 @@ node --test indicadores/tests/*.test.js
 
 Las pruebas verifican con la Hoja1 de ejemplo los mismos resultados del libro: 168 HU únicas, 122 consideradas,
 deuda técnica 14,8 %, cumplimiento del backlog 76,0 %, 271 horas ejecutadas, precisión del refinement 94,3 %,
-cambios de alcance 2,5 %, retrabajo 3,3 %, distribución por estado/fase/mes y las tablas de seguimiento.
+cambios de alcance 2,5 %, retrabajo 3,3 %, distribución por estado/fase/mes y las tablas de seguimiento. También
+verifican Efectividad, Avance del sprint, Avance por ID y Burndown con una hoja en el formato de InteTrack.

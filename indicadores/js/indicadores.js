@@ -64,6 +64,20 @@
     incluirActual: false
   };
 
+  // Avance de los paquetes Diseño y Desarrollo relacionados con las HU (Avance del sprint,
+  // Avance por ID y Burndown). Solo cuentan Desarrollo y Pruebas funcionales, escalados a 100%:
+  // un paquete suma las acciones anteriores a su estado y los estados terminados van al 100%.
+  var AVANCE_DYD = {
+    tipo: 'Diseño y Desarrollo',
+    acciones: [
+      { accion: 'Desarrollo', esfuerzo: 0.45, estados: ['En desarrollo'] },
+      { accion: 'Pruebas funcionales', esfuerzo: 0.25, estados: ['Pruebas funcionales y Documentación'] }
+    ],
+    // Admiten comodines * y ?, sin distinguir mayúsculas ('Cierre*' incluye CIERRE en Desarrollo o Solución y Cierre DyD)
+    terminados: ['Despliegue', 'Entrega*', 'Cierre*', 'Garantía*'],
+    incluirActual: false
+  };
+
   var PARAMETROS = {
     tipoExcluidoBacklog: 'Deuda Tecnica', // J55
     marcaAlcance: 'Cambio de Alcance',    // J58
@@ -97,6 +111,10 @@
       definicion: 'Requerimientos retrabajados por especificaciones ambiguas o incompletas.',
       formula: '(N° retrabajados por ambigüedad / N° total de requerimientos) x 100', frecuencia: 'Mensual',
       responsable: 'Analista Funcional Líder', criterio: "HU con marca 'Retrabajo por ambigüedad' en Precisión HU / total HU consideradas" },
+    { id: 'efectividad', nombre: 'Efectividad (horas por punto de historia)', meta: 8, tipoMeta: '<=', grupo: 'plantilla', unidad: 'h/pt',
+      definicion: 'Uso eficiente del tiempo: horas invertidas por cada punto de historia. Menos horas por punto es más eficiente.',
+      formula: 'Σ Tiempo invertido / Σ Puntos de Historia', frecuencia: 'Mensual',
+      responsable: 'Líder de Desarrollo', criterio: 'Tiempo invertido / Puntos de Historia de las HU consideradas que tienen puntos' },
     { id: 'analisis', nombre: '% HU en Análisis', meta: null, tipoMeta: '', grupo: 'flujo',
       definicion: 'HU en Levantamiento Requerimiento, especificaciones Funcionales, Aprobación cliente, Aprobacion PO o Backlog.',
       formula: '(N° HU en Análisis / N° HU consideradas) x 100', frecuencia: 'Mensual',
@@ -122,6 +140,7 @@
     cliente: 'Cliente', estado: 'Estado', trabajo: 'Trabajo', trabajoTotal: 'Trabajo total',
     asignado: 'Asignado a', fechaInicio: 'Fecha de inicio', fechaFin: 'Fecha de finalización',
     precision: 'Precisión HU', responsable: 'Responsable',
+    puntos: 'Puntos de Historia', tiempo: 'Tiempo invertido',
     // El módulo viene de la columna "Módulo afectado" del ERP (si no está, se acepta "Módulo")
     modulo: ['Módulo afectado', 'Módulo']
   };
@@ -175,22 +194,37 @@
     return d ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') : '';
   }
 
-  /** Busca la fila de encabezados y devuelve índice de fila + mapa campo->columna. */
+  /** Mapa campo->columna de los encabezados entre las columnas desde y hasta (sin incluir). */
+  function mapearColumnas(fila, desde, hasta) {
+    var mapa = {}, rango = {};
+    for (var c = desde; c < hasta; c++) {
+      var h = sinTildes(fila[c]);
+      if (!h) continue;
+      for (var campo in COLUMNAS) {
+        var alias = [].concat(COLUMNAS[campo]).map(sinTildes);
+        var k = alias.indexOf(h);
+        // Primera columna con ese nombre; entre alias, gana el de mayor prioridad
+        if (k !== -1 && (mapa[campo] === undefined || k < rango[campo])) { mapa[campo] = c; rango[campo] = k; }
+      }
+    }
+    return mapa;
+  }
+
+  /**
+   * Busca la fila de encabezados y devuelve índice de fila + mapa campo->columna de la HU.
+   * Si existe el bloque Relaciones (desde "Tipo de relación"), devuelve también su mapa.
+   */
   function detectarEncabezados(matriz) {
     for (var r = 0; r < Math.min(matriz.length, 20); r++) {
       var fila = matriz[r] || [];
-      var mapa = {}, rango = {};
-      for (var c = 0; c < fila.length; c++) {
-        var h = sinTildes(fila[c]);
-        if (!h) continue;
-        for (var campo in COLUMNAS) {
-          var alias = [].concat(COLUMNAS[campo]).map(sinTildes);
-          var k = alias.indexOf(h);
-          // Primera columna con ese nombre; entre alias, gana el de mayor prioridad
-          if (k !== -1 && (mapa[campo] === undefined || k < rango[campo])) { mapa[campo] = c; rango[campo] = k; }
-        }
+      var inicioRel = -1;
+      for (var c = 0; c < fila.length; c++) if (sinTildes(fila[c]) === 'tipo de relacion') { inicioRel = c; break; }
+      var mapa = mapearColumnas(fila, 0, inicioRel === -1 ? fila.length : inicioRel);
+      if (mapa.id !== undefined && mapa.estado !== undefined) {
+        var rel = inicioRel === -1 ? null : mapearColumnas(fila, inicioRel, fila.length);
+        if (rel) rel.tipoRelacion = inicioRel;
+        return { fila: r, mapa: mapa, relaciones: rel && rel.id !== undefined ? rel : null };
       }
-      if (mapa.id !== undefined && mapa.estado !== undefined) return { fila: r, mapa: mapa };
     }
     return null;
   }
@@ -223,17 +257,18 @@
     var equivalencias = opciones.equivalencias || EQUIVALENCIAS;
     var enc = detectarEncabezados(matriz);
     if (!enc) throw new Error('No se encontró la fila de encabezados (se esperan columnas "ID" y "Estado").');
-    var m = enc.mapa;
+    var m = enc.mapa, mr = enc.relaciones;
     var vistos = {};
     var registros = [];
+    var paquetes = {};
     var filasLeidas = 0;
     for (var r = enc.fila + 1; r < matriz.length; r++) {
       var fila = matriz[r] || [];
       var id = texto(fila[m.id]);
       if (!id) continue;
       filasLeidas++;
+      if (mr) leerRelacion(fila, mr, vistos[id] || null, id, paquetes);
       if (vistos[id]) continue;
-      vistos[id] = true;
       var get = function (campo) { return m[campo] === undefined ? '' : fila[m[campo]]; };
       var fin = parseFecha(get('fechaFin'));
       var estadoOriginal = texto(get('estado'));
@@ -260,14 +295,43 @@
         tipoSolicitud: texto(get('tipoSolicitud')) || SIN_CLASIFICAR,
         sprint: texto(get('sprint')) || SIN_SPRINT,
         precision: texto(get('precision')),
+        puntos: numero(get('puntos')),
+        tiempo: numero(get('tiempo')),
+        relaciones: [],
         fila: r + 1
       };
       registro.modulo = texto(get('modulo')) || SIN_MODULO;
       registros.push(registro);
+      vistos[id] = registro;
+      if (mr) leerRelacion(fila, mr, registro, id, paquetes);
     }
     var columnas = {};
     Object.keys(m).forEach(function (k) { columnas[k] = true; });
+    if (mr) columnas.relaciones = true;
     return { registros: registros, filasLeidas: filasLeidas, filaEncabezado: enc.fila + 1, columnas: columnas };
+  }
+
+  /**
+   * Agrega a la HU el paquete de trabajo relacionado de la fila (bloque Relaciones).
+   * Un mismo paquete relacionado con varias HU es un único objeto.
+   */
+  function leerRelacion(fila, mr, hu, idHU, paquetes) {
+    if (!hu) return; // la primera fila de la HU la lee parsearHoja después de crear el registro
+    var id = texto(fila[mr.id]);
+    if (!id) return;
+    var get = function (campo) { return mr[campo] === undefined ? '' : fila[mr[campo]]; };
+    var p = paquetes[id];
+    if (!p) {
+      p = paquetes[id] = {
+        id: id, asunto: texto(get('asunto')), tipo: texto(get('tipo')), sprint: texto(get('sprint')),
+        estado: texto(get('estado')), asignado: texto(get('asignado')), modulo: texto(get('modulo')),
+        puntos: numero(get('puntos')), tiempo: numero(get('tiempo')),
+        fechaInicio: parseFecha(get('fechaInicio')), fechaFin: parseFecha(get('fechaFin')),
+        relacion: texto(fila[mr.tipoRelacion]), hus: []
+      };
+    }
+    if (p.hus.indexOf(idHU) === -1) p.hus.push(idHU);
+    if (hu.relaciones.indexOf(p) === -1) hu.relaciones.push(p);
   }
 
   function contar(lista, fn) {
@@ -374,6 +438,11 @@
     var horasContratadas = par.horasContratadas === '' || par.horasContratadas === null || par.horasContratadas === undefined
       ? null : Number(par.horasContratadas);
 
+    // Efectividad: horas invertidas por punto de historia (HU consideradas con puntos)
+    var conPuntos = consideradas.filter(function (h) { return h.puntos > 0; });
+    var puntos = conPuntos.reduce(function (s, h) { return s + h.puntos; }, 0);
+    var tiempo = conPuntos.reduce(function (s, h) { return s + h.tiempo; }, 0);
+
     var numDen = {
       deuda: [contar(consideradas, function (h) { return h.tipoSolicitud === 'Deuda Tecnica'; }), nC],
       backlog: [contar(sinExcluido, function (h) { return h.enFlujo === 'Cerrado'; }), sinExcluido.length],
@@ -381,6 +450,7 @@
       refinement: [contar(consideradas, function (h) { return h.precision === ''; }), nC],
       alcance: [contar(consideradas, function (h) { return coincideCriterio(h.precision, par.marcaAlcance); }), nC],
       ambiguedad: [contar(consideradas, function (h) { return coincideCriterio(h.precision, par.marcaRetrabajo); }), nC],
+      efectividad: [tiempo, puntos],
       analisis: [fase['Análisis'], nC],
       desarrollo: [fase['Desarrollo'], nC],
       pruebas: [fase['Pruebas'], nC],
@@ -445,6 +515,7 @@
       porTipo: porTipo,
       kpis: kpis,
       horas: { ejecutadas: horas, contratadas: horasContratadas },
+      efectividad: { horas: tiempo, puntos: puntos, hu: conPuntos.length },
       mensual: mensual,
       anio: anio,
       anios: Object.keys(anios).map(Number).sort(),
@@ -564,7 +635,138 @@
     };
   }
 
+  // ---------- Sprint: paquetes Diseño y Desarrollo ----------
+  /** Avance (0 a 1) de un paquete Diseño y Desarrollo según su estado. */
+  function avancePaquete(p, cfg) {
+    cfg = cfg || AVANCE_DYD;
+    if ((cfg.terminados || []).some(function (t) { return texto(t) && coincideCriterio(p.estado, t); })) {
+      return { avance: 1, accion: 'Terminado', orden: 99 };
+    }
+    var tabla = tablaAvance(cfg);
+    var total = tabla.total || 1;
+    var e = normalizar(p.estado);
+    for (var i = 0; i < tabla.filas.length; i++) {
+      var f = tabla.filas[i];
+      if (f.estados.some(function (x) { return normalizar(x) === e; })) return { avance: Math.min(1, f.avance / total), accion: f.accion, orden: f.orden };
+    }
+    return { avance: 0, accion: 'Sin iniciar', orden: -1 };
+  }
+
+  /** Paquetes Diseño y Desarrollo (únicos) relacionados con las HU, con su avance. */
+  function paquetesDyD(registros, cfg) {
+    cfg = cfg || AVANCE_DYD;
+    var vistos = {}, lista = [];
+    registros.forEach(function (h) {
+      (h.relaciones || []).forEach(function (p) {
+        if (vistos[p.id] || !coincideCriterio(p.tipo, cfg.tipo)) return;
+        vistos[p.id] = true;
+        var a = avancePaquete(p, cfg);
+        lista.push({ paquete: p, avance: a.avance, accion: a.accion, orden: a.orden });
+      });
+    });
+    return lista;
+  }
+
+  function resumenPaquetes(nombre, items) {
+    var n = items.length;
+    var puntos = items.reduce(function (s, x) { return s + x.paquete.puntos; }, 0);
+    var fin = items.reduce(function (m, x) { return x.paquete.fechaFin && (!m || x.paquete.fechaFin > m) ? x.paquete.fechaFin : m; }, null);
+    return {
+      nombre: nombre, n: n, items: items,
+      avance: n ? items.reduce(function (s, x) { return s + x.avance; }, 0) / n : null,
+      terminados: contar(items, function (x) { return x.avance >= 1; }),
+      enPruebas: contar(items, function (x) { return x.avance > 0 && x.avance < 1; }),
+      sinAvance: contar(items, function (x) { return x.avance === 0; }),
+      puntos: puntos,
+      puntosTerminados: items.reduce(function (s, x) { return s + (x.avance >= 1 ? x.paquete.puntos : 0); }, 0),
+      fin: fin
+    };
+  }
+
+  /**
+   * Avance del sprint y avance por ID a partir de los paquetes Diseño y Desarrollo
+   * relacionados con las HU. El sprint es el del paquete (sin sprint no entra al avance del sprint).
+   */
+  function calcularSprint(registros, cfg) {
+    cfg = cfg || AVANCE_DYD;
+    var lista = paquetesDyD(registros, cfg);
+    var grupos = {}, sinSprint = [];
+    lista.forEach(function (x) {
+      var s = x.paquete.sprint;
+      if (!s) { sinSprint.push(x); return; }
+      (grupos[s] = grupos[s] || []).push(x);
+    });
+    var porSprint = Object.keys(grupos).map(function (k) { return resumenPaquetes(k, grupos[k]); }).sort(function (a, b) { return compararSprint(b.nombre, a.nombre); });
+    var porAvance = {};
+    lista.forEach(function (x) { porAvance[x.paquete.id] = x; });
+    var porHU = registros.map(function (h) {
+      var items = (h.relaciones || []).map(function (p) { return porAvance[p.id]; }).filter(Boolean);
+      if (!items.length) return null;
+      var r = resumenPaquetes(h.id, items);
+      r.hu = h;
+      return r;
+    }).filter(Boolean);
+    return { tabla: tablaAvance(cfg), paquetes: lista, porSprint: porSprint, sinSprint: resumenPaquetes('Sin sprint', sinSprint), porHU: porHU, total: resumenPaquetes('Total', lista) };
+  }
+
+  /** Orden natural de nombres de sprint (Sprint 4 < SPRINT 5 < Sprint 10). */
+  function compararSprint(a, b) {
+    return String(a).localeCompare(String(b), 'es', { numeric: true, sensitivity: 'base' });
+  }
+
+  /**
+   * Burndown de un sprint a partir de varios cortes (los informes cargados como Sprint).
+   * @param cortes  [{ corte: 'AAAA-MM-DD', registros }] en cualquier orden
+   * Devuelve los puntos pendientes de cada corte, la línea ideal y los ID que salieron o entraron al sprint.
+   */
+  function calcularBurndown(cortes, sprint, cfg) {
+    var orden = cortes.slice().sort(function (a, b) { return String(a.corte).localeCompare(String(b.corte)); });
+    var anterior = null, fin = null, movimientos = [];
+    var puntos = orden.map(function (c) {
+      var lista = paquetesDyD(c.registros, cfg);
+      var mapa = {};
+      lista.forEach(function (x) { mapa[x.paquete.id] = x; });
+      var en = lista.filter(function (x) { return x.paquete.sprint === sprint; });
+      en.forEach(function (x) { if (x.paquete.fechaFin && (!fin || x.paquete.fechaFin > fin)) fin = x.paquete.fechaFin; });
+      if (anterior) {
+        Object.keys(anterior).forEach(function (id) {
+          var a = anterior[id], b = mapa[id];
+          if (a.paquete.sprint === sprint && b && b.paquete.sprint !== sprint) {
+            movimientos.push({ tipo: 'salio', id: id, asunto: b.paquete.asunto, de: sprint, a: b.paquete.sprint || 'Sin sprint', corte: c.corte, puntos: b.paquete.puntos, estado: b.paquete.estado, hus: b.paquete.hus });
+          }
+        });
+        en.forEach(function (b) {
+          var a = anterior[b.paquete.id];
+          if (a && a.paquete.sprint !== sprint) {
+            movimientos.push({ tipo: 'entro', id: b.paquete.id, asunto: b.paquete.asunto, de: a.paquete.sprint || 'Sin sprint', a: sprint, corte: c.corte, puntos: b.paquete.puntos, estado: b.paquete.estado, hus: b.paquete.hus });
+          }
+        });
+      }
+      anterior = mapa;
+      var r = resumenPaquetes(sprint, en);
+      return { corte: c.corte, paquetes: r.n, puntos: r.puntos, pendientes: r.puntos - r.puntosTerminados, paquetesPendientes: r.n - r.terminados };
+    });
+    var hayPuntos = puntos.some(function (p) { return p.puntos > 0; });
+    var iniciales = puntos.length ? puntos[0].pendientes : 0;
+    var inicialesPaq = puntos.length ? puntos[0].paquetesPendientes : 0;
+    var finISO = fin ? fin.getFullYear() + '-' + String(fin.getMonth() + 1).padStart(2, '0') + '-' + String(fin.getDate()).padStart(2, '0') : null;
+    var ultimo = puntos.length ? puntos[puntos.length - 1].corte : null;
+    if (!finISO || (ultimo && finISO < ultimo)) finISO = ultimo;
+    var dia = function (iso) { var p = iso.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]) / 86400000; };
+    // Línea ideal: de lo pendiente en el primer corte a 0 en la fecha de fin del sprint
+    var ideal = function (iso, inicial) {
+      if (!puntos.length) return null;
+      var d0 = dia(puntos[0].corte), d1 = dia(finISO);
+      if (d1 <= d0) return iso === finISO ? 0 : inicial;
+      return Math.max(0, inicial * (1 - (dia(iso) - d0) / (d1 - d0)));
+    };
+    puntos.forEach(function (p) { p.ideal = ideal(p.corte, iniciales); p.idealPaquetes = ideal(p.corte, inicialesPaq); });
+    return { sprint: sprint, puntos: puntos, fin: finISO, hayPuntos: hayPuntos, iniciales: iniciales, inicialesPaquetes: inicialesPaq, movimientos: movimientos };
+  }
+
   return {
+    AVANCE_DYD: AVANCE_DYD, avancePaquete: avancePaquete, paquetesDyD: paquetesDyD, calcularSprint: calcularSprint,
+    calcularBurndown: calcularBurndown, compararSprint: compararSprint,
     AVANCE: AVANCE, tablaAvance: tablaAvance, avanceHU: avanceHU, calcularAvance: calcularAvance,
     ESTADOS: ESTADOS, EQUIVALENCIAS: EQUIVALENCIAS, FASES: FASES, TIPOS_SOLICITUD: TIPOS_SOLICITUD, KPIS: KPIS, PARAMETROS: PARAMETROS,
     EXCLUIDO: EXCLUIDO, SIN_MAPEAR: SIN_MAPEAR, SIN_MODULO: SIN_MODULO, SIN_SPRINT: SIN_SPRINT,
